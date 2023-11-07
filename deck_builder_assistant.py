@@ -30,7 +30,7 @@ COLOR_TO_LAND = {
     'B': 'Swamp'}
 COMMANDER_NAME = 'Queza, Augur of Agonies'
 COMMANDER_KEYWORDS = []  # ['Draw', 'Lifegain', 'Lifeloss'] doesn't work, not an evergreen ability ?
-COMMANDER_KEYWORDS_REGEXES = [
+COMMANDER_FEATURES_REGEXES = [
     r'(opponent|target player|owner).*(lose|have lost).*life',
     r'(you|target player|owner).*(gain|have gained).*life',
     r'(you|target player|owner).*(draw|have draw)']
@@ -41,7 +41,7 @@ LAND_MULTICOLORS_EXCLUDE_REGEX = r'('+('|'.join([
     'you may', 'reveal', 'only', 'gains', 'return', 'create']))+')'
 LAND_MULTICOLORS_GENERIC_EXCLUDE_REGEX = r'('+('|'.join([
     'dragon', 'elemental', 'phyrexian', 'time lord', 'alien', 'gates', 'devoid', 'ally', 'pilot',
-    'vehicule', 'sliver', 'vampire', 'cleric', 'rogue', 'warrior', 'wizard']))+')'
+    'vehicle', 'sliver', 'vampire', 'cleric', 'rogue', 'warrior', 'wizard']))+')'
 LAND_BICOLORS_EXCLUDE_REGEX = r'('+('|'.join([
     'you may reveal',
     'this turn',
@@ -51,14 +51,52 @@ LAND_BICOLORS_EXCLUDE_REGEX = r'('+('|'.join([
     'basic lands']))+')'
 LAND_SACRIFICE_SEARCH_REGEX = r'sacrifice.*search.*land'
 RAMP_CARDS_REGEX = r'('+('|'.join([
-    '(look for|search|play).* land',
-    'add \\{[CRGBUW0-9]',
-    'add .* to your mana pool',
-    'add .* of any color',
+    '(look for |search |play )[^.]+ land',
+    'adds? (an additional )?\\{[crgbuw0-9]\\}',
+    'adds? [^.]+ to your mana pool',
+    'adds? [^.]+ of any color',
+    'adds? \\w+ mana',
+    '(you may )?adds? an amount of \\{[crgbuw]\\} equal to',
+    'that player adds? \\w+ mana of any color they choose',
+    ('spells? (you cast )?(of the chosen type |that share a card type with the exiled card )?'+
+     'costs? (up to )?\\{\\d+\\} less to cast'),
+    'abilities (of creatures (you control )?)?costs? \\{\\d+\\} less to activate',
+    'adds? \\w+ additional mana',
+    'spells? (you cast)? have (convoke|improvise)',
+    'double the amount of [^.]+ mana you have',
+    ("(reveal|look at) the top card of your library.*if it's a land card, "+
+     "(then |you may )?put (it|that card) onto the battlefield"),
+    'look at the top \\w+ cards of your library\\. put \\w+ of them into your hand',
+    'reveal a card in your hand, then put that card onto the battlefield',
+    'for each \\{[crgbuw]\\} in a cost, you may pay \\d+ life rather than pay that mana',
+    'you may [^.]+ untap target [^.]+ land',
+    'put (a|up to \\w+) lands? cards? from your hand onto the battlefield',
+    'choose [^.]+ land.* untap all tapped permanents of that type that player controls',
+    "gain control of a land you don't control",
+]))+')'
+RAMP_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
+    'defending player controls? [^.]+ land',
+    'this spell costs \\{\\d+\\} less to cast',
+    '\\{\\d+\\}(, \\{t\\})?: add one mana of any color',
+    '\\{\\d+\\}(, \\{t\\})?, sacrifice [^:]+: add (one mana of any color|\\{[crgbuw]\\})',
 ]))+')'
 RAMP_CARDS_LAND_FETCH_REGEX = r'search(es)? (your|their) library for .* ' \
         '(land|'+('|'.join(map(lambda c: c.lower()+'s?', COLOR_TO_LAND.values())))+') card'
 LAND_CYCLING_REGEX = r'(land ?|'+('|'.join(map(str.lower, COLOR_TO_LAND.values())))+')cycling'
+LAND_RECOMMENDED_MULTICOLOR = [
+'']
+LAND_RECOMMENDED_BICOLORS = [
+
+    # TODO programmatically select those, according to the commander's color
+    'Tundra',  # {T}: Add {W} or {U}.
+    'Darkwater Catacombs',  # {1}, {T}: Add {U}{B}.
+    'Underground Sea',  # {T}: Add {U} or {B}.
+    'Skycloud Expanse',  # {1}, {T}: Add {W}{U}.
+    'Scrubland',  # {T}: Add {W} or {B}.
+    'Glacial Fortress',  # Glacial Fortress enters the battlefield tapped unless you control a Plains or an Island. {T}: Add {W} or {U}.
+    'Isolated Chapel',  # Isolated Chapel enters the battlefield tapped unless you control a Plains or a Swamp. {T}: Add {W} or {B}.
+    'Drowned Catacomb',  # Drowned Catacomb enters the battlefield tapped unless you control an Island or a Swamp. {T}: Add {U} or {B}.
+    ]
 
 # Add a parameter to express if a 1-drop at turn 1 is important,
 # that will exclude land that are not usable at turn 1 or colorless at turn 1
@@ -189,9 +227,16 @@ FILL_GRAVEYARD_FAST = False
 # }
 
 def hypergeometric_draw(tup_expected_in_quantity, deck_size = 99, draw_count = 7, percentage = False):
-    """Return the percentage of drawing multiples (k cards of a certain type which exist in a quantity m in the
-       deck of size U), for a draw size of n (typically first hand is 7).
-       see: https://en.wikipedia.org/wiki/Hypergeometric_distribution#Multivariate_hypergeometric_distribution
+    """Return the probability/percentage of having certains cards in a drawing in certains quantity,
+       depending on the amount of those cards in the deck, the deck size, and the drawing number.
+
+       This is the Multivariate Hypergeometric Distribution function as described here:
+       https://en.wikipedia.org/wiki/Hypergeometric_distribution#Multivariate_hypergeometric_distribution
+
+       Parameters:
+            tup_expected_in_quantity: a list of 2-tuples, first is quantity of sample in deck,
+                                      second is expected samples in the draw
+            percentage: if 'True' is will return result in percentage rather than probability [0-1]
        """
 #     print("[hypergeometric_draw]", 'deck:', deck_size, ', draw:', draw_count, ', tuples:', tup_expected_in_quantity)
 #     print("[hypergeometric_draw]", 'comb:', 'prod(', [('comb('+str(tup[0])+', '+str(tup[1])+')') for tup in tup_expected_in_quantity], ')')
@@ -235,49 +280,49 @@ def get_sources_requirements(item):
     if item['cmc'] == 0:
         return 0
     if item['cmc'] == 1:
-        if re.match(r'^{\w}$', item['mana_cost']):
+        if re.match(r'^\{\w\}$', item['mana_cost']):
             return 19
     if item['cmc'] == 2:
-        if re.match(r'^{1}{\w}$', item['mana_cost']):
+        if re.match(r'^\{1\}\{\w\}$', item['mana_cost']):
             return 19
-        if re.match(r'^{\w}{\w}$', item['mana_cost']):
+        if re.match(r'^\{\w\}\{\w\}$', item['mana_cost']):
             return 30
     if item['cmc'] == 3:
-        if re.match(r'^{2}{\w}$', item['mana_cost']):
+        if re.match(r'^\{2\}\{\w\}$', item['mana_cost']):
             return 18
-        if re.match(r'^{1}{\w}{\w}$', item['mana_cost']):
+        if re.match(r'^\{1\}\{\w\}\{\w\}$', item['mana_cost']):
             return 28
-        if re.match(r'^{\w}{\w}{\w}$', item['mana_cost']):
+        if re.match(r'^\{\w\}\{\w\}\{\w\}$', item['mana_cost']):
             return 36
     if item['cmc'] == 4:
-        if re.match(r'^{3}{\w}$', item['mana_cost']):
+        if re.match(r'^\{3\}\{\w\}$', item['mana_cost']):
             return 16
-        if re.match(r'^{2}{\w}{\w}$', item['mana_cost']):
+        if re.match(r'^\{2\}\{\w\}\{\w\}$', item['mana_cost']):
             return 26
-        if re.match(r'^{1}{\w}{\w}{\w}$', item['mana_cost']):
+        if re.match(r'^\{1\}\{\w\}\{\w\}\{\w\}$', item['mana_cost']):
             return 33
-        if re.match(r'^{\w}{\w}{\w}{\w}$', item['mana_cost']):
+        if re.match(r'^\{\w\}\{\w\}\{\w\}\{\w\}$', item['mana_cost']):
             return 39
     if item['cmc'] == 5:
-        if re.match(r'^{4}{\w}$', item['mana_cost']):
+        if re.match(r'^\{4\}\{\w\}$', item['mana_cost']):
             return 15
-        if re.match(r'^{3}{\w}{\w}$', item['mana_cost']):
+        if re.match(r'^\{3\}\{\w\}\{\w\}$', item['mana_cost']):
             return 23
-        if re.match(r'^{2}{\w}{\w}{\w}$', item['mana_cost']):
+        if re.match(r'^\{2\}\{\w\}\{\w\}\{\w\}$', item['mana_cost']):
             return 30
-        if re.match(r'^{1}{\w}{\w}{\w}{\w}$', item['mana_cost']):
+        if re.match(r'^\{1\}\{\w\}\{\w\}\{\w\}\{\w\}$', item['mana_cost']):
             return 36
     if item['cmc'] == 6:
-        if re.match(r'^{5}{\w}$', item['mana_cost']):
+        if re.match(r'^\{5\}\{\w\}$', item['mana_cost']):
             return 14
-        if re.match(r'^{4}{\w}{\w}$', item['mana_cost']):
+        if re.match(r'^\{4\}\{\w\}\{\w\}$', item['mana_cost']):
             return 22
-        if re.match(r'^{3}{\w}{\w}{\w}$', item['mana_cost']):
+        if re.match(r'^\{3\}\{\w\}\{\w\}\{\w\}$', item['mana_cost']):
             return 28
     if item['cmc'] == 7:
-        if re.match(r'^{5}{\w}{\w}$', item['mana_cost']):
+        if re.match(r'^\{5\}\{\w\}\{\w\}$', item['mana_cost']):
             return 20
-        if re.match(r'^{4}{\w}{\w}{\w}$', item['mana_cost']):
+        if re.match(r'^\{4\}\{\w\}\{\w\}\{\w\}$', item['mana_cost']):
             return 26
     raise Exception("Not implemented")
 
@@ -328,7 +373,27 @@ def get_xmage_commander_banned_list(include_duel = True, update = False):
 def get_oracle_texts(card):
     """Return a list of 'oracle_text', one per card's faces"""
     return ([card['oracle_text']] if 'oracle_text' in card
-            else [face['oracle_text'] for face in card['card_faces']])
+            else ([face['oracle_text'] for face in card['card_faces']]
+                  if 'card_faces' in card and card['card_faces'] else ''))
+
+def get_mana_costs(card):
+    """Return a list of 'mana_costs', one per card's faces"""
+    return ([card['mana_cost']] if 'mana_cost' in card
+            else ([face['mana_cost'] for face in card['card_faces']]
+                  if 'card_faces' in card and card['card_faces'] else ''))
+
+def get_type_lines(card):
+    """Return a list of 'type_line', one per card's faces"""
+    return ([card['type_line']] if 'type_line' in card
+            else ([face['type_line'] for face in card['card_faces']]
+                  if 'card_faces' in card and card['card_faces'] else ''))
+
+def get_power_defenses(card):
+    """Return a list of 'power' and 'toughness', one per card's faces"""
+    return ([card['power']+'/'+card['toughness']] if 'power' in card and 'toughness' in card
+            else ([face['power']+'/'+face['toughness'] for face in card['card_faces']
+                   if 'power' in face and 'toughness' in face]
+                  if 'card_faces' in card and card['card_faces'] else ''))
 
 def in_strings(string, texts):
     """Search a string in a list of strings"""
@@ -425,7 +490,12 @@ def filter_all_at_once(item):
 
 def filter_lands(item):
     """Keep only lands"""
-    return item['type_line'].startswith('Land') or item['type_line'].startswith('Legendary Land')
+    return (item['type_line'].startswith('Land')
+            or item['type_line'].startswith('Legendary Land')
+            or item['type_line'].startswith('Basic Land')
+            or item['type_line'].startswith('Artifact Land')
+            or item['type_line'].startswith('Snow Land')
+            or item['type_line'].startswith('Basic Snow Land'))
 
 def filter_sacrifice(item):
     """Remove card if its text contains 'sacrifice' without containing 'unless'"""
@@ -474,13 +544,632 @@ def compute_invalid_colors():
     global INVALID_COLORS
     INVALID_COLORS = ALL_COLORS - COMMANDER_COLOR_IDENTITY
 
-def join_oracle_texts(card):
+def join_oracle_texts(card, truncate = False):
     """Return a string with card's oracle text joined"""
-    return ' // '.join(get_oracle_texts(card)).replace('\n', ' ')
+    return ' // '.join(map(
+        lambda c: truncate_text(c, int((truncate - 1) / 2) if truncate and 'card_faces' in card
+                                else truncate),
+        get_oracle_texts(card))).replace('\n', ' ')
 
 def order_cards_by_cmc_and_name(cards_list):
     """Return an ordered cards list by CMC and Name"""
     return list(sorted(cards_list, key=lambda c: str(c['cmc'])+c['name']))
+
+def print_all_cards_stats(cards, total_cards):
+    """Print statistics about all cards"""
+
+    print('')
+    print('### All Cards Stats ###')
+    print('')
+
+    print('Total cards:', total_cards)
+
+    # empty cards
+    prev_total_cards = total_cards
+    cards = list(filter(filter_empty, cards))
+    total_cards = len(cards)
+    print('Empty cards:', prev_total_cards - total_cards)
+    print('')
+
+    # commander legal
+    prev_total_cards = total_cards
+    cards_legal = list(filter(filter_not_legal_and_banned, cards))
+    new_total_cards = len(cards_legal)
+    print('Illegal or banned:', prev_total_cards - new_total_cards)
+    print('')
+
+    # xmage banned
+    prev_total_cards = total_cards
+    cards_not_banned = list(filter(filter_xmage_banned, cards))
+    new_total_cards = len(cards_not_banned)
+    print('XMage banned:', prev_total_cards - new_total_cards)
+    print('')
+
+    # mythic or special
+    prev_total_cards = total_cards
+    cards_below_mythic = list(filter(filter_mythic_and_special, cards))
+    new_total_cards = len(cards_below_mythic)
+    print('Mythic or special:', prev_total_cards - new_total_cards)
+    print('')
+
+    # max price
+    no_price_eur = len(list(filter(lambda c: not c['prices']['eur'], cards)))
+    no_price_usd = len(list(filter(lambda c: not c['prices']['usd'], cards)))
+    max_price_eur = max(map(lambda c: float(c['prices']['eur'] or 0), cards))
+    max_price_usd = max(map(lambda c: float(c['prices']['usd'] or 0), cards))
+    print('No price EUR:', no_price_eur)
+    print('No price USD:', no_price_usd)
+    print('Price max EUR:', max_price_eur)
+    print('Price max USD:', max_price_usd)
+    print('')
+
+    # price above 100€ or 120$
+    prev_total_cards = total_cards
+    cards_price_ok = list(filter(filter_price, cards))
+    new_total_cards = len(cards_price_ok)
+    print('Price >100€ or >120$:', prev_total_cards - new_total_cards)
+    print('')
+
+    # no text
+    prev_total_cards = total_cards
+    cards_with_text = list(filter(filter_no_text, cards))
+    new_total_cards = len(cards_with_text)
+    print('Without text:', prev_total_cards - new_total_cards)
+    print('')
+
+    # no keywords
+    prev_total_cards = total_cards
+    cards_with_keywords = list(filter(filter_no_keywords, cards))
+    new_total_cards = len(cards_with_keywords)
+    print('Without keywords:', prev_total_cards - new_total_cards)
+    print('')
+
+    # no text and no keywords
+    prev_total_cards = total_cards
+    cards_with_keywords_or_text = list(
+        filter(lambda c: filter_no_keywords(c) or filter_no_text(c), cards))
+    new_total_cards = len(cards_with_keywords_or_text)
+    print('Without keywords and text:', prev_total_cards - new_total_cards)
+
+def assist_land_selection(lands, land_types_invalid_regex):
+    """Show pre-selected lands organised by features, for the user to select some"""
+
+    # lands selection
+    selected_lands = []
+    # lands_no_sacrifice = list(filter(filter_sacrifice, lands))
+    # lands_no_tapped = list(filter(filter_tapped_or_untappable, lands))
+    # lands_no_sacrifice_or_tapped = list(filter(
+    #     lambda c: filter_sacrifice(c) and filter_tapped_or_untappable(c), lands))
+
+    # select multicolor lands
+    cards_lands_multicolors = list(filter(filter_multicolors_lands, lands))
+    cards_lands_multicolors_generic_enough = list(filter(
+        lambda c: not list(search_strings(LAND_MULTICOLORS_GENERIC_EXCLUDE_REGEX,
+                                            map(str.lower, get_oracle_texts(c)))),
+        cards_lands_multicolors))
+    cards_lands_multicolors_no_tapped = list(filter(
+        filter_tapped_or_untappable, cards_lands_multicolors_generic_enough))
+    cards_lands_multicolors_tapped = [
+        c for c in cards_lands_multicolors if c not in cards_lands_multicolors_no_tapped]
+    cards_lands_multicolors_filtered = list(filter(
+        lambda c: not list(search_strings(LAND_MULTICOLORS_EXCLUDE_REGEX,
+        map(str.lower, get_oracle_texts(c)))),
+            filter(filter_add_one_colorless_mana,
+                filter(filter_sacrifice,
+                    filter(filter_tapped,
+                        cards_lands_multicolors_generic_enough)))))
+    selected_lands += cards_lands_multicolors_filtered
+    cards_lands_multicolors_no_tapped = [
+        c for c in cards_lands_multicolors_no_tapped
+        if c not in cards_lands_multicolors_filtered]
+    cards_lands_multicolors_tapped = [
+        c for c in cards_lands_multicolors_tapped if c not in cards_lands_multicolors_filtered]
+    cards_lands_multicolors_producers = list(filter(
+        lambda c: bool(list(search_strings(
+            r'(^\s*|\n|\r|[^,] )\{T\}: Add ', get_oracle_texts(c)))),
+        [c for c in cards_lands_multicolors_generic_enough
+            if c not in cards_lands_multicolors_filtered]))
+
+    # converters/mana fixers with colorless production
+    # TODO exclude them ?
+    cards_lands_converters_colorless_producers = list(filter(
+        lambda c: c['name'] == "Cascading Cataracts" or bool(list(search_strings(
+            r'\{T\}: Add \{C\}.(\s+|\n|\r)?\{\d+\}, \{T\}: Add one mana of any color',
+            get_oracle_texts(c)))),
+        cards_lands_multicolors_producers))
+    cards_lands_converters_colorless_producers_not_tapped = list(filter(
+        filter_tapped_or_untappable, cards_lands_converters_colorless_producers))
+    cards_lands_converters_colorless_producers_tapped = [
+        c for c in cards_lands_converters_colorless_producers
+        if c not in cards_lands_converters_colorless_producers_not_tapped]
+
+    # update multicolors producers to exclude those that only produces colorless mana
+    cards_lands_multicolors_producers = [
+        c for c in cards_lands_multicolors_producers
+        if c not in cards_lands_converters_colorless_producers]
+
+    # remove under optimized cards
+    cards_lands_multicolors_producers = list(filter(
+        lambda c: bool(
+            # shity
+            not list(in_strings(
+                '{T}, Sacrifice '+c['name']+': Add one mana of any color', get_oracle_texts(c)))
+            # shity
+            and not list(in_strings(
+                'When '+c['name']+' enters the battlefield, add one mana of any color',
+                get_oracle_texts(c)))
+            # shity
+            and c['name'] != "Springjack Pasture"
+            # specific
+            and (c['name'] != "The Grey Havens" or FILL_GRAVEYARD_FAST)),
+        cards_lands_multicolors_producers))
+
+    # split multicolors producers between tapped or not
+    cards_lands_multicolors_producers_not_tapped = list(filter(
+        filter_tapped_or_untappable, cards_lands_multicolors_producers))
+    cards_lands_multicolors_producers_tapped = [
+        c for c in cards_lands_multicolors_producers
+        if c not in cards_lands_multicolors_producers_not_tapped]
+
+    # remove under optimized cards
+    cards_lands_multicolors_producers_tapped_filtered = list(filter(
+        lambda c: bool(
+            # pay {1} or sacrifice it
+            not list(in_strings('sacrifice it unless you pay {1}', get_oracle_texts(c)))
+            # color selection: mono color
+            and not list(in_strings(
+                '{T}: Add one mana of the chosen color', get_oracle_texts(c)))
+            # color selection: bi-color
+            and not list(search_strings(
+                r'\{T\}: Add \{\w\} or one mana of the chosen color', get_oracle_texts(c)))
+            and not list(in_strings(
+                '{T}: Add one mana of either of the circled colors', get_oracle_texts(c)))
+            # charge counter
+            and not list(in_strings(
+                '{T}, Remove a charge counter from '+c['name']+': Add one mana of any color',
+                get_oracle_texts(c)))),
+        cards_lands_multicolors_producers_tapped))
+
+    # multicolors producers that produce mana only for a given spell type
+    cards_lands_multicolors_producers_not_tapped_selective = list(filter(
+        lambda c: list(in_strings('only to cast', map(str.lower, get_oracle_texts(c)))),
+        cards_lands_multicolors_producers_not_tapped))
+    cards_lands_multicolors_producers_not_tapped_not_selective = [
+        c for c in cards_lands_multicolors_producers_not_tapped
+        if c not in cards_lands_multicolors_producers_not_tapped_selective]
+
+
+    # converters/mana fixers without production
+    # TODO exclude them ?
+    cards_lands_converters_no_producers = list(filter(
+        lambda c: bool(list(search_strings(r'\{\d+\}, \{T\}: Add one mana of any color',
+                                            get_oracle_texts(c)))),
+        [c for c in cards_lands_multicolors_generic_enough
+            if c not in cards_lands_converters_colorless_producers]))
+    cards_lands_converters_no_producers_not_tapped = list(filter(
+        filter_tapped_or_untappable, cards_lands_converters_no_producers))
+    cards_lands_converters_no_producers_tapped = [
+        c for c in cards_lands_converters_no_producers
+        if c not in cards_lands_converters_no_producers_not_tapped]
+
+    # update converters list
+    cards_lands_converters = (cards_lands_converters_colorless_producers
+                                + cards_lands_converters_no_producers)
+
+    # tri-colors lands
+    cards_lands_tricolors = list(filter(
+        lambda c: not bool(list(in_strings('return', map(str.lower, get_oracle_texts(c))))),
+        filter(filter_add_one_colorless_mana,
+                filter(filter_tricolors_lands, lands))))
+    selected_lands += cards_lands_tricolors
+
+    # bi-colors lands
+    cards_lands_bicolors = list(filter(filter_bicolors_lands, lands))
+    cards_lands_bicolors_filtered = list(filter(
+        lambda c: (
+            ' // ' not in c['name']
+            and not list(in_strings('storage counter', get_oracle_texts(c)))
+            and not list(in_strings("doesn't untap", get_oracle_texts(c)))
+            and not list(search_strings(LAND_BICOLORS_EXCLUDE_REGEX,
+                                        map(str.lower, get_oracle_texts(c))))),
+        cards_lands_bicolors))
+    cards_lands_bicolors_filtered_not_tapped = list(filter(filter_tapped_or_untappable,
+        cards_lands_bicolors_filtered))
+    cards_lands_bicolors_filtered_tapped = [
+        c for c in cards_lands_bicolors_filtered
+        if c not in cards_lands_bicolors_filtered_not_tapped]
+    selected_lands += cards_lands_bicolors_filtered_not_tapped
+
+    # land fetcher
+    cards_lands_sacrifice_search = list(
+        filter(
+            lambda c: not list(in_strings('destroy', map(str.lower, get_oracle_texts(c)))),
+            filter(
+                lambda c: not list(search_strings(land_types_invalid_regex,
+                                                    map(str.lower, get_oracle_texts(c)))),
+                filter(
+                    lambda c: list(search_strings(LAND_SACRIFICE_SEARCH_REGEX,
+                                                    map(str.lower, get_oracle_texts(c)))),
+                    lands))))
+    cards_lands_sacrifice_search_no_tapped = list(
+        filter(filter_tapped_or_untappable, cards_lands_sacrifice_search))
+    selected_lands += cards_lands_sacrifice_search_no_tapped
+
+    # non-basic lands that are producers
+    cards_lands_producers_non_basic = list(filter(
+            lambda c: (
+                bool(list(search_strings(r'(\s+|\n|\r)?\{T\}: Add \{\w\}',
+                                            get_oracle_texts(c))))
+                and not bool(list(in_strings('roll a', map(str.lower, get_oracle_texts(c)))))
+                and not bool(list(in_strings('phased out', map(str.lower, get_oracle_texts(c)))))
+                and not bool(list(in_strings('venture into the dungeon',
+                                            map(str.lower, get_oracle_texts(c)))))),
+            filter(
+                lambda c: not c['type_line'].lower().startswith('basic land'),
+                [c for c in lands if c not in cards_lands_multicolors_generic_enough
+                and c not in cards_lands_converters
+                and c not in cards_lands_tricolors
+                and c not in cards_lands_bicolors
+                and c not in cards_lands_sacrifice_search])))
+    cards_lands_producers_non_basic_no_colorless = list(filter(
+        filter_add_one_colorless_mana, cards_lands_producers_non_basic))
+    cards_lands_producers_non_basic_colorless = [
+        c for c in cards_lands_producers_non_basic
+        if c not in cards_lands_producers_non_basic_no_colorless]
+    cards_lands_producers_non_basic_no_colorless_not_tapped = list(filter(
+        filter_tapped, cards_lands_producers_non_basic_no_colorless))
+    cards_lands_producers_non_basic_no_colorless_tapped = [
+        c for c in cards_lands_producers_non_basic_no_colorless
+        if c not in cards_lands_producers_non_basic_no_colorless_not_tapped]
+
+    # print land results
+    print('Multicolors lands generic enough (total):', len(cards_lands_multicolors_generic_enough))
+    print('')
+    print('Multicolors lands producers (total):', len(cards_lands_multicolors_producers))
+    print('')
+    # print('   Multicolors lands (not tapped, conditionnal):', len(cards_lands_multicolors_no_tapped))
+    # for card in cards_lands_multicolors_no_tapped:
+    #     print('      ', card['name'], ' ', join_oracle_texts(card))
+    # print('')
+    # print('   Multicolors lands (tapped):', len(cards_lands_multicolors_tapped))
+    # for card in cards_lands_multicolors_tapped:
+    #     print('      ', card['name'], ' ', join_oracle_texts(card))
+    # print('')
+    print('   Multicolors lands producers (not tapped, no sacrifice, no colorless mana):',
+            len(cards_lands_multicolors_filtered))
+    for card in cards_lands_multicolors_filtered:
+        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
+    print('')
+    print('   Multicolors lands producers (not tapped or untappable):',
+            len(cards_lands_multicolors_producers_not_tapped))
+    print('')
+    print('   Multicolors lands producers (not tapped or untappable, not selective):',
+            len(cards_lands_multicolors_producers_not_tapped_not_selective))
+    for card in cards_lands_multicolors_producers_not_tapped_not_selective:
+        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
+    print('')
+    print('   Multicolors lands producers (not tapped or untappable, selective):',
+            len(cards_lands_multicolors_producers_not_tapped_selective))
+    for card in cards_lands_multicolors_producers_not_tapped_selective:
+        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
+    print('')
+    print('   Multicolors lands producers (tapped):',
+            len(cards_lands_multicolors_producers_tapped))
+    print('')
+    print('   Multicolors lands producers (tapped, no color selection, no charge counter, no pay {1}):',
+            len(cards_lands_multicolors_producers_tapped_filtered))
+    for card in cards_lands_multicolors_producers_tapped_filtered:
+        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
+    print('')
+
+    print('Lands converters (total):', len(cards_lands_converters))
+    print('')
+    print('   Lands converters colorless producers (total):',
+            len(cards_lands_converters_colorless_producers))
+    print('')
+    print('   Lands converters colorless producers (not tapped or untappable):',
+            len(cards_lands_converters_colorless_producers_not_tapped))
+    for card in cards_lands_converters_colorless_producers_not_tapped:
+        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
+    print('')
+    print('   Lands converters colorless producers (tapped):',
+            len(cards_lands_converters_colorless_producers_tapped))
+    for card in cards_lands_converters_colorless_producers_tapped:
+        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
+    print('')
+
+    ### NOTE: I prefer artifacts for the job of converting mana,
+    ###       since their colorless mana will turn into a ramp, instead of a bad mana
+    # print('   Lands converters not producers (total):',
+    #       len(cards_lands_converters_no_producers))
+    # print('')
+    # print('   Lands converters not producers (not tapped or untappable):',
+    #       len(cards_lands_converters_no_producers_not_tapped))
+    # for card in cards_lands_converters_no_producers_not_tapped:
+    #     print('      ', card['name'], ' ', join_oracle_texts(card))
+    # print('')
+    # print('   Lands converters not producers (tapped):',
+    #       len(cards_lands_converters_no_producers_tapped))
+    # for card in cards_lands_converters_no_producers_tapped:
+    #     print('      ', card['name'], ' ', join_oracle_texts(card))
+    # print('')
+    #
+    # print('Tricolors lands:', len(cards_lands_tricolors))
+    # for card in cards_lands_tricolors:
+    #     print('   ', card['produced_mana'], ' ', card['name'], ' ', join_oracle_texts(card))
+    # print('')
+
+    print('Bicolors lands:', len(cards_lands_bicolors))
+    print('')
+    print('Bicolors lands (filtered):', len(cards_lands_bicolors_filtered))
+    print('')
+    print('Bicolors lands (filtered, not tapped or untappable):',
+            len(cards_lands_bicolors_filtered_not_tapped))
+    for card in cards_lands_bicolors_filtered_not_tapped:
+        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
+    print('')
+    print('Bicolors lands (filtered, tapped):',
+            len(cards_lands_bicolors_filtered_tapped))
+    # for card in cards_lands_bicolors_filtered_tapped:
+    #     print('   ', card['produced_mana'], ' ', card['name'], ' ', join_oracle_texts(card))
+    print('')
+
+    print('Sacrifice/Search lands:', len(cards_lands_sacrifice_search))
+    print('Sacrifice/Search lands (not tapped or untappable):',
+            len(cards_lands_sacrifice_search_no_tapped))
+    for card in cards_lands_sacrifice_search_no_tapped:
+        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
+    print('')
+
+    print('Lands producers of mana that are non-basic:', len(cards_lands_producers_non_basic))
+    print('')
+    # NOTE: those fetchable lands are useless
+    # cards_lands_producers_non_basic_fetchable = list(filter(
+    #     lambda c: re.search(
+    #         r'('+('|'.join(map(str.lower, COLOR_TO_LAND.values())))+')',
+    #         c['type_line'].lower()),
+    #     cards_lands_producers_non_basic))
+    # print('   Lands producers of mana that are non-basic (fetchable):',
+    #       len(cards_lands_producers_non_basic_fetchable))
+    # for card in cards_lands_producers_non_basic_fetchable:
+    #     print('      ', card['name'], ' ', join_oracle_texts(card))
+    # print('')
+    print('   Lands producers of mana that are non-basic (no colorless):',
+           len(cards_lands_producers_non_basic_no_colorless))
+    print('')
+    print('   Lands producers of mana that are non-basic (no colorless, not tapped):',
+           len(cards_lands_producers_non_basic_no_colorless_not_tapped))
+    for card in cards_lands_producers_non_basic_no_colorless_not_tapped:
+        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
+    print('')
+    print('   Lands producers of mana that are non-basic (no colorless, tapped):',
+           len(cards_lands_producers_non_basic_no_colorless_tapped))
+    print('')
+    print('   Lands producers of mana that are non-basic (colorless):',
+            len(cards_lands_producers_non_basic_colorless))
+    for card in cards_lands_producers_non_basic_colorless:
+        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
+    print('')
+    print('')
+
+    # TODO select monocolor lands to match 37 lands cards (at the end)
+    #      42 cards recommanded: @see https://www.channelfireball.com/article/What-s-an-Optimal-Mana-Curve-and-Land-Ramp-Count-for-Commander/e22caad1-b04b-4f8a-951b-a41e9f08da14/
+    #      - 3 land for each 5 ramp cards
+    #      - 2 land for each 5 draw cards
+
+
+def assist_land_fetch(cards, land_types_invalid_regex):
+    """Show pre-selected land fetchers organised by features, for the user to select some"""
+
+    cards_ramp_cards_land_fetch = []
+    cards_ramp_cards_land_fetch_channel = []
+    cards_ramp_cards_land_fetch_land_cycling = []
+
+    for card in cards:
+        card_oracle_texts = list(get_oracle_texts(card))
+        card_oracle_texts_low = list(map(str.lower, card_oracle_texts))
+        if not list(search_strings(land_types_invalid_regex, card_oracle_texts_low)):
+            if card['name'] not in ["Strata Scythe", "Trench Gorger"]:
+                if list(search_strings(LAND_CYCLING_REGEX, card_oracle_texts_low)):
+                    cards_ramp_cards_land_fetch_land_cycling.append(card['name'])
+                    cards_ramp_cards_land_fetch.append(card)
+                elif (bool(list(search_strings(RAMP_CARDS_LAND_FETCH_REGEX, card_oracle_texts_low)))
+                        #and not list(search_strings(r'(you|target player|opponent).*discard',
+                        #                            card_oracle_texts_low))
+                        and card['name'] not in ['Mana Severance', 'Settle the Wreckage']
+                        and not filter_lands(card)):
+                    if bool(list(in_strings('channel', card_oracle_texts_low))):
+                        cards_ramp_cards_land_fetch_channel.append(card['name'])
+                    cards_ramp_cards_land_fetch.append(card)
+
+    cards_ramp_cards_land_fetch_by_feature = {
+        'to hand': [],
+        'to hand (conditional)': [],
+        'to battlefield': [],
+        'to battlefield (conditional)': [],
+        'to top of library': [],
+        'to top of library (conditional)': []}
+    for card in cards_ramp_cards_land_fetch:
+        card_oracle_texts = list(get_oracle_texts(card))
+        card_oracle_texts_low = list(map(str.lower, card_oracle_texts))
+        conditional = (bool(list(in_strings('more lands', card_oracle_texts_low)))
+                       or bool(list(in_strings('fewer lands', card_oracle_texts_low))))
+        cond_text = ' (conditional)' if conditional else ''
+        if list(search_strings(
+                r'puts? (it|that card|one( of them)?|them|those cards|a card [^.]+) into your hand',
+                card_oracle_texts_low)):
+            cards_ramp_cards_land_fetch_by_feature['to hand'+cond_text].append(card)
+        elif list(search_strings(
+                r'puts? (it|that card|one( of them)?|them|those cards) onto the battlefield',
+                card_oracle_texts_low)):
+            cards_ramp_cards_land_fetch_by_feature['to battlefield'+cond_text].append(card)
+        elif list(search_strings('put that card on top', card_oracle_texts_low)):
+            cards_ramp_cards_land_fetch_by_feature['to top of library'+cond_text].append(card)
+        else:
+            print('UNKNOWN', print_card(card, return_str = True, trunc_text = False))
+
+    print('Ramp cards land fetch (total):', len(cards_ramp_cards_land_fetch))
+    print('')
+
+    for feature, cards_list in cards_ramp_cards_land_fetch_by_feature.items():
+        if cards_list:
+            print('   Ramp cards land fetch ('+feature+'):', len(cards_list))
+            if ' (conditional)' in feature:
+                print('')
+                continue
+            land_cycling = []
+            channel = []
+            organized = {'creature': [], 'instant': [], 'sorcery': [], 'enchantment': [],
+                        'artifact': []}
+            for card in cards_list:
+                if card['name'] in cards_ramp_cards_land_fetch_land_cycling:
+                    land_cycling.append(card)
+                elif card['name'] in cards_ramp_cards_land_fetch_channel:
+                    channel.append(card)
+                else:
+                    organized[get_card_type(card)].append(card)
+
+            for card_type, sub_cards_list in organized.items():
+                organized[card_type] = order_cards_by_cmc_and_name(sub_cards_list)
+
+            for card_type, sub_cards_list in organized.items():
+                if sub_cards_list:
+                    print('      Ramp cards land fetch '+feature+' ('+card_type+'):',
+                          len(sub_cards_list))
+                    for card in sub_cards_list:
+                        if card_type == 'unknown':
+                            print_card(card, print_power_def = False, indent = 8,
+                                       trunc_mana = 15, merge_type_power_def = False)
+                        else:
+                            print_card(card, print_power_def = (card_type == 'creature'),
+                                       print_type = False, indent = 8, trunc_mana = 15,
+                                       print_mana = (card_type not in ['land','stickers']))
+                    print('')
+            if land_cycling:
+                print('      Ramp cards land fetch '+feature+' (land cycling):', len(land_cycling))
+                for card in order_cards_by_cmc_and_name(land_cycling):
+                    print_card(card, indent = 8)
+                print('')
+            if channel:
+                print('      Ramp cards land fetch '+feature+' (channel):', len(channel))
+                for card in order_cards_by_cmc_and_name(channel):
+                    print_card(card, indent = 8)
+                print('')
+            print('')
+
+    return cards_ramp_cards_land_fetch
+
+def truncate_text(text, length):
+    """Truncate a text to length and add an ellipsis if text was lengther"""
+    if length and len(text) > length:
+        return text[:length - 1]+'…'
+    return text
+
+def is_creature(card, include_vehicle = True):
+    """Return 'True' if the card is a creature, or one of its face is one"""
+    return (bool(list(in_strings('creature', map(str.lower, get_type_lines(card)))))
+            or (bool(list(in_strings('vehicle', map(str.lower, get_type_lines(card)))))
+                and include_vehicle))
+
+def get_card_type(card):
+    """Return the card type amongst following:
+       - creature
+       - planeswalker
+       - instant
+       - enchantment
+       - artifact
+       - sorcery
+       - land
+       - stickers
+       - unknown
+    """
+    if is_creature(card):
+        return 'creature'
+    if 'planeswalker' in card['type_line'].lower():
+        return 'planeswalker'
+    if 'instant' in card['type_line'].lower():
+        return 'instant'
+    if 'sorcery' in card['type_line'].lower():
+        return 'sorcery'
+    if 'enchantment' in card['type_line'].lower():
+        return 'enchantment'
+    if 'artifact' in card['type_line'].lower():
+        return 'artifact'
+    if filter_lands(card):
+        return 'land'
+    if 'stickers' in card['type_line'].lower():
+        return 'stickers'
+    return 'unknown'
+
+def organize_by_type(cards):
+    """Return a dict with cards dispatched amongst following keys:
+       - creature
+       - planeswalker
+       - instant
+       - enchantment
+       - artifact
+       - sorcery
+       - land
+       - stickers
+       - unknown
+    """
+    orga = {
+        'creature': [],
+        'planeswalker': [],
+        'instant': [],
+        'enchantment': [],
+        'artifact': [],
+        'sorcery': [],
+        'land': [],
+        'stickers': [],
+        'unknown': [],
+    }
+    for card in cards:
+        orga[get_card_type(card)].append(card)
+    return orga
+
+def print_card(card, indent = 0, print_mana = True, print_type = True, print_power_def = True,
+               trunc_name = 25, trunc_type = 16, trunc_text = 115, trunc_mana = 21,
+               merge_type_power_def = True, return_str = False):
+    """Display a card or return a string representing it"""
+    if merge_type_power_def and (not trunc_type or trunc_type > 10):
+        trunc_type = 10  # default power/defense length
+    len_type = '16' if not trunc_type else str(trunc_type)
+
+    card_line_format  = '{indent:<'+str(indent)+'}'
+    card_line_format += ('{mana_costs:>'+('21' if not trunc_mana else str(trunc_mana))+'} | '
+                         if print_mana else '{mana_costs}')
+    if merge_type_power_def:
+        if print_power_def or print_type:
+            if is_creature(card) and print_power_def:
+                card_line_format += '{power_defenses:>'+len_type+'} | '
+            elif print_type:
+                card_line_format += '{type_lines:>'+len_type+'} | '
+            else:
+                card_line_format += '{power_defenses:<'+len_type+'} | '
+        else:
+            card_line_format += '{power_defenses}{type_lines}'  # will print nothing
+    else:
+        card_line_format += '{power_defenses:>10} | ' if print_power_def else '{power_defenses}'
+        card_line_format += '{type_lines:<'+len_type+'} | ' if print_type else '{type_lines}'
+    card_line_format += '{name:<'+('40' if not trunc_name else str(trunc_name))+'} | '
+    card_line_format += '{oracle_texts}'
+
+    card_line_params = {
+        'indent': ' ',
+        'mana_costs': truncate_text((' // '.join(get_mana_costs(card)) if print_mana else ''),
+                                    trunc_mana),
+        'type_lines': truncate_text((' // '.join(get_type_lines(card)) if print_type else ''),
+                                    trunc_type),
+        'name': truncate_text(card['name'], trunc_name),
+        'power_defenses': '',
+        'oracle_texts': join_oracle_texts(card, trunc_text)}
+    if print_power_def and is_creature(card):
+        card_line_params['power_defenses'] = ' // '.join(get_power_defenses(card))
+    card_line = card_line_format.format(**card_line_params)
+    if not return_str:
+        print(card_line)
+    return card_line
 
 def main():
     """Main program"""
@@ -495,86 +1184,8 @@ def main():
 
         # TODO Add a parameter to exclude MTG sets by name or code
 
-        # for card in cards:
-        #     if card['name'].lower().startswith('chalice of life'):
-        #         print(card['name'], ':')
-        #         pp = pprint.PrettyPrinter(indent=4)
-        #         pp.pprint(card)
-        #         print('')
-
-        print('')
-        print('### All Cards Stats ###')
-        print('')
-
         total_cards = len(cards)
-        print('Total cards:', total_cards)
-
-        # empty cards
-        prev_total_cards = total_cards
-        cards = list(filter(filter_empty, cards))
-        total_cards = len(cards)
-        print('Empty cards:', prev_total_cards - total_cards)
-        print('')
-
-        # commander legal
-        prev_total_cards = total_cards
-        cards_legal = list(filter(filter_not_legal_and_banned, cards))
-        new_total_cards = len(cards_legal)
-        print('Illegal or banned:', prev_total_cards - new_total_cards)
-        print('')
-
-        # xmage banned
-        prev_total_cards = total_cards
-        cards_not_banned = list(filter(filter_xmage_banned, cards))
-        new_total_cards = len(cards_not_banned)
-        print('XMage banned:', prev_total_cards - new_total_cards)
-        print('')
-
-        # mythic or special
-        prev_total_cards = total_cards
-        cards_below_mythic = list(filter(filter_mythic_and_special, cards))
-        new_total_cards = len(cards_below_mythic)
-        print('Mythic or special:', prev_total_cards - new_total_cards)
-        print('')
-
-        # max price
-        no_price_eur = len(list(filter(lambda c: not c['prices']['eur'], cards)))
-        no_price_usd = len(list(filter(lambda c: not c['prices']['usd'], cards)))
-        max_price_eur = max(map(lambda c: float(c['prices']['eur'] or 0), cards))
-        max_price_usd = max(map(lambda c: float(c['prices']['usd'] or 0), cards))
-        print('No price EUR:', no_price_eur)
-        print('No price USD:', no_price_usd)
-        print('Price max EUR:', max_price_eur)
-        print('Price max USD:', max_price_usd)
-        print('')
-
-        # price above 100€ or 120$
-        prev_total_cards = total_cards
-        cards_price_ok = list(filter(filter_price, cards))
-        new_total_cards = len(cards_price_ok)
-        print('Price >100€ or >120$:', prev_total_cards - new_total_cards)
-        print('')
-
-        # no text
-        prev_total_cards = total_cards
-        cards_with_text = list(filter(filter_no_text, cards))
-        new_total_cards = len(cards_with_text)
-        print('Without text:', prev_total_cards - new_total_cards)
-        print('')
-
-        # no keywords
-        prev_total_cards = total_cards
-        cards_with_keywords = list(filter(filter_no_keywords, cards))
-        new_total_cards = len(cards_with_keywords)
-        print('Without keywords:', prev_total_cards - new_total_cards)
-        print('')
-
-        # no text and no keywords
-        prev_total_cards = total_cards
-        cards_with_keywords_or_text = list(
-            filter(lambda c: filter_no_keywords(c) or filter_no_text(c), cards))
-        new_total_cards = len(cards_with_keywords_or_text)
-        print('Without keywords and text:', prev_total_cards - new_total_cards)
+        #print_all_cards_stats(cards, total_cards)
 
         print('')
         print('')
@@ -675,444 +1286,86 @@ def main():
         new_total_cards = len(cards_common_keyword)
         print('One common keyword', commander_keywords, ':', new_total_cards)
         print('')
-
-        # lands selection
-        selected_lands = []
-        lands = list(filter(filter_lands, cards_ok))
-        # lands_no_sacrifice = list(filter(filter_sacrifice, lands))
-        # lands_no_tapped = list(filter(filter_tapped_or_untappable, lands))
-        # lands_no_sacrifice_or_tapped = list(filter(
-        #     lambda c: filter_sacrifice(c) and filter_tapped_or_untappable(c), lands))
-
-        # select multicolor lands
-        cards_lands_multicolors = list(filter(filter_multicolors_lands, lands))
-        cards_lands_multicolors_generic_enough = list(filter(
-            lambda c: not list(search_strings(LAND_MULTICOLORS_GENERIC_EXCLUDE_REGEX,
-                                              map(str.lower, get_oracle_texts(c)))),
-            cards_lands_multicolors))
-        cards_lands_multicolors_no_tapped = list(filter(
-            filter_tapped_or_untappable, cards_lands_multicolors_generic_enough))
-        cards_lands_multicolors_tapped = [
-            c for c in cards_lands_multicolors if c not in cards_lands_multicolors_no_tapped]
-        cards_lands_multicolors_filtered = list(filter(
-            lambda c: not list(search_strings(LAND_MULTICOLORS_EXCLUDE_REGEX,
-            map(str.lower, get_oracle_texts(c)))),
-                filter(filter_add_one_colorless_mana,
-                    filter(filter_sacrifice,
-                        filter(filter_tapped,
-                            cards_lands_multicolors_generic_enough)))))
-        selected_lands += cards_lands_multicolors_filtered
-        cards_lands_multicolors_no_tapped = [
-            c for c in cards_lands_multicolors_no_tapped
-            if c not in cards_lands_multicolors_filtered]
-        cards_lands_multicolors_tapped = [
-            c for c in cards_lands_multicolors_tapped if c not in cards_lands_multicolors_filtered]
-        cards_lands_multicolors_producers = list(filter(
-            lambda c: bool(list(search_strings(
-                r'(^\s*|\n|\r|[^,] )\{T\}: Add ', get_oracle_texts(c)))),
-            [c for c in cards_lands_multicolors_generic_enough
-             if c not in cards_lands_multicolors_filtered]))
-
-        # converters/mana fixers with colorless production
-        # TODO exclude them ?
-        cards_lands_converters_colorless_producers = list(filter(
-            lambda c: c['name'] == "Cascading Cataracts" or bool(list(search_strings(
-                r'\{T\}: Add \{C\}.(\s+|\n|\r)?\{\d+\}, \{T\}: Add one mana of any color',
-                get_oracle_texts(c)))),
-            cards_lands_multicolors_producers))
-        cards_lands_converters_colorless_producers_not_tapped = list(filter(
-            filter_tapped_or_untappable, cards_lands_converters_colorless_producers))
-        cards_lands_converters_colorless_producers_tapped = [
-            c for c in cards_lands_converters_colorless_producers
-            if c not in cards_lands_converters_colorless_producers_not_tapped]
-
-        # update multicolors producers to exclude those that only produces colorless mana
-        cards_lands_multicolors_producers = [
-            c for c in cards_lands_multicolors_producers
-            if c not in cards_lands_converters_colorless_producers]
-
-        # remove under optimized cards
-        cards_lands_multicolors_producers = list(filter(
-            lambda c: bool(
-                # shity
-                not list(in_strings(
-                    '{T}, Sacrifice '+c['name']+': Add one mana of any color', get_oracle_texts(c)))
-                # shity
-                and not list(in_strings(
-                    'When '+c['name']+' enters the battlefield, add one mana of any color',
-                    get_oracle_texts(c)))
-                # shity
-                and c['name'] != "Springjack Pasture"
-                # specific
-                and (c['name'] != "The Grey Havens" or FILL_GRAVEYARD_FAST)),
-            cards_lands_multicolors_producers))
-
-        # split multicolors producers between tapped or not
-        cards_lands_multicolors_producers_not_tapped = list(filter(
-            filter_tapped_or_untappable, cards_lands_multicolors_producers))
-        cards_lands_multicolors_producers_tapped = [
-            c for c in cards_lands_multicolors_producers
-            if c not in cards_lands_multicolors_producers_not_tapped]
-
-        # remove under optimized cards
-        cards_lands_multicolors_producers_tapped_filtered = list(filter(
-            lambda c: bool(
-                # pay {1} or sacrifice it
-                not list(in_strings('sacrifice it unless you pay {1}', get_oracle_texts(c)))
-                # color selection: mono color
-                and not list(in_strings(
-                    '{T}: Add one mana of the chosen color', get_oracle_texts(c)))
-                # color selection: bi-color
-                and not list(search_strings(
-                    r'\{T\}: Add \{\w\} or one mana of the chosen color', get_oracle_texts(c)))
-                and not list(in_strings(
-                    '{T}: Add one mana of either of the circled colors', get_oracle_texts(c)))
-                # charge counter
-                and not list(in_strings(
-                    '{T}, Remove a charge counter from '+c['name']+': Add one mana of any color',
-                    get_oracle_texts(c)))),
-            cards_lands_multicolors_producers_tapped))
-
-        # multicolors producers that produce mana only for a given spell type
-        cards_lands_multicolors_producers_not_tapped_selective = list(filter(
-            lambda c: list(in_strings('only to cast', map(str.lower, get_oracle_texts(c)))),
-            cards_lands_multicolors_producers_not_tapped))
-        cards_lands_multicolors_producers_not_tapped_not_selective = [
-            c for c in cards_lands_multicolors_producers_not_tapped
-            if c not in cards_lands_multicolors_producers_not_tapped_selective]
-
-
-        # converters/mana fixers without production
-        # TODO exclude them ?
-        cards_lands_converters_no_producers = list(filter(
-            lambda c: bool(list(search_strings(r'\{\d+\}, \{T\}: Add one mana of any color',
-                                               get_oracle_texts(c)))),
-            [c for c in cards_lands_multicolors_generic_enough
-             if c not in cards_lands_converters_colorless_producers]))
-        cards_lands_converters_no_producers_not_tapped = list(filter(
-            filter_tapped_or_untappable, cards_lands_converters_no_producers))
-        cards_lands_converters_no_producers_tapped = [
-            c for c in cards_lands_converters_no_producers
-            if c not in cards_lands_converters_no_producers_not_tapped]
-
-        # update converters list
-        cards_lands_converters = (cards_lands_converters_colorless_producers
-                                  + cards_lands_converters_no_producers)
-
-        # tri-colors lands
-        cards_lands_tricolors = list(filter(
-            lambda c: not bool(list(in_strings('return', map(str.lower, get_oracle_texts(c))))),
-            filter(filter_add_one_colorless_mana,
-                   filter(filter_tricolors_lands, lands))))
-        selected_lands += cards_lands_tricolors
-
-        # bi-colors lands
-        cards_lands_bicolors = list(filter(filter_bicolors_lands, lands))
-        cards_lands_bicolors_filtered = list(filter(
-            lambda c: (
-                ' // ' not in c['name']
-                and not list(in_strings('storage counter', get_oracle_texts(c)))
-                and not list(in_strings("doesn't untap", get_oracle_texts(c)))
-                and not list(search_strings(LAND_BICOLORS_EXCLUDE_REGEX,
-                                            map(str.lower, get_oracle_texts(c))))),
-            cards_lands_bicolors))
-        cards_lands_bicolors_filtered_not_tapped = list(filter(filter_tapped_or_untappable,
-            cards_lands_bicolors_filtered))
-        cards_lands_bicolors_filtered_tapped = [
-            c for c in cards_lands_bicolors_filtered
-            if c not in cards_lands_bicolors_filtered_not_tapped]
-        selected_lands += cards_lands_bicolors_filtered_not_tapped
-
-        # land fetcher
-        land_types_invalid = [COLOR_TO_LAND[c] for c in INVALID_COLORS]
-        land_types_invalid_regex = r'('+('|'.join(land_types_invalid)).lower()+')'
-        cards_lands_sacrifice_search = list(
-            filter(
-                lambda c: not list(in_strings('destroy', map(str.lower, get_oracle_texts(c)))),
-                filter(
-                    lambda c: not list(search_strings(land_types_invalid_regex,
-                                                      map(str.lower, get_oracle_texts(c)))),
-                    filter(
-                        lambda c: list(search_strings(LAND_SACRIFICE_SEARCH_REGEX,
-                                                      map(str.lower, get_oracle_texts(c)))),
-                        lands))))
-        cards_lands_sacrifice_search_no_tapped = list(
-            filter(filter_tapped_or_untappable, cards_lands_sacrifice_search))
-        selected_lands += cards_lands_sacrifice_search_no_tapped
-
-        # non-basic lands that are producers
-        cards_lands_producers_non_basic = list(filter(
-                lambda c: (
-                    bool(list(search_strings(r'(\s+|\n|\r)?\{T\}: Add \{\w\}',
-                                             get_oracle_texts(c))))
-                    and not bool(list(in_strings('roll a', map(str.lower, get_oracle_texts(c)))))
-                    and not bool(list(in_strings('phased out', map(str.lower, get_oracle_texts(c)))))
-                    and not bool(list(in_strings('venture into the dungeon',
-                                             map(str.lower, get_oracle_texts(c)))))),
-                filter(
-                    lambda c: not c['type_line'].lower().startswith('basic land'),
-                    [c for c in lands if c not in cards_lands_multicolors_generic_enough
-                    and c not in cards_lands_converters
-                    and c not in cards_lands_tricolors
-                    and c not in cards_lands_bicolors
-                    and c not in cards_lands_sacrifice_search])))
-        cards_lands_producers_non_basic_no_colorless = list(filter(
-            filter_add_one_colorless_mana, cards_lands_producers_non_basic))
-        cards_lands_producers_non_basic_colorless = [
-            c for c in cards_lands_producers_non_basic
-            if c not in cards_lands_producers_non_basic_no_colorless]
-        cards_lands_producers_non_basic_fetchable = list(filter(
-            lambda c: re.search(
-                r'('+('|'.join(map(str.lower, COLOR_TO_LAND.values())))+')',
-                c['type_line'].lower()),
-            cards_lands_producers_non_basic))
-
-        # print land results
-        print('Multicolors lands generic enough (total):', len(cards_lands_multicolors_generic_enough))
-        print('')
-        print('Multicolors lands producers (total):', len(cards_lands_multicolors_producers))
-        print('')
-        # print('   Multicolors lands (not tapped, conditionnal):', len(cards_lands_multicolors_no_tapped))
-        # for card in cards_lands_multicolors_no_tapped:
-        #     print('      ', card['name'], ' ', join_oracle_texts(card))
-        # print('')
-        # print('   Multicolors lands (tapped):', len(cards_lands_multicolors_tapped))
-        # for card in cards_lands_multicolors_tapped:
-        #     print('      ', card['name'], ' ', join_oracle_texts(card))
-        # print('')
-        print('   Multicolors lands producers (not tapped, no sacrifice, no colorless mana):',
-              len(cards_lands_multicolors_filtered))
-        for card in cards_lands_multicolors_filtered:
-            print('      ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-        print('   Multicolors lands producers (not tapped or untappable):',
-              len(cards_lands_multicolors_producers_not_tapped))
-        print('')
-        print('   Multicolors lands producers (not tapped or untappable, not selective):',
-              len(cards_lands_multicolors_producers_not_tapped_not_selective))
-        for card in cards_lands_multicolors_producers_not_tapped_not_selective:
-            print('      ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-        print('   Multicolors lands producers (not tapped or untappable, selective):',
-              len(cards_lands_multicolors_producers_not_tapped_selective))
-        for card in cards_lands_multicolors_producers_not_tapped_selective:
-            print('      ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-        print('   Multicolors lands producers (tapped):',
-              len(cards_lands_multicolors_producers_tapped))
-        print('')
-        print('   Multicolors lands producers (tapped, no color selection, no charge counter, no pay {1}):',
-              len(cards_lands_multicolors_producers_tapped_filtered))
-        for card in cards_lands_multicolors_producers_tapped_filtered:
-            print('      ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-
-        print('Lands converters (total):', len(cards_lands_converters))
-        print('')
-        print('   Lands converters colorless producers (total):',
-              len(cards_lands_converters_colorless_producers))
-        print('')
-        print('   Lands converters colorless producers (not tapped or untappable):',
-              len(cards_lands_converters_colorless_producers_not_tapped))
-        for card in cards_lands_converters_colorless_producers_not_tapped:
-            print('      ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-        print('   Lands converters colorless producers (tapped):',
-              len(cards_lands_converters_colorless_producers_tapped))
-        for card in cards_lands_converters_colorless_producers_tapped:
-            print('      ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-
-        ### NOTE: I prefer artifacts for the job of converting mana,
-        ###       since their colorless mana will turn into a ramp, instead of a bad mana
-        # print('   Lands converters not producers (total):',
-        #       len(cards_lands_converters_no_producers))
-        # print('')
-        # print('   Lands converters not producers (not tapped or untappable):',
-        #       len(cards_lands_converters_no_producers_not_tapped))
-        # for card in cards_lands_converters_no_producers_not_tapped:
-        #     print('      ', card['name'], ' ', join_oracle_texts(card))
-        # print('')
-        # print('   Lands converters not producers (tapped):',
-        #       len(cards_lands_converters_no_producers_tapped))
-        # for card in cards_lands_converters_no_producers_tapped:
-        #     print('      ', card['name'], ' ', join_oracle_texts(card))
-        # print('')
-        #
-        # print('Tricolors lands:', len(cards_lands_tricolors))
-        # for card in cards_lands_tricolors:
-        #     print('   ', card['produced_mana'], ' ', card['name'], ' ', join_oracle_texts(card))
-        # print('')
-
-        print('Bicolors lands:', len(cards_lands_bicolors))
-        print('')
-        print('Bicolors lands (filtered):', len(cards_lands_bicolors_filtered))
-        print('')
-        print('Bicolors lands (filtered, not tapped or untappable):',
-              len(cards_lands_bicolors_filtered_not_tapped))
-        for card in cards_lands_bicolors_filtered_not_tapped:
-            print('   ', card['produced_mana'], ' ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-        print('Bicolors lands (filtered, tapped):',
-              len(cards_lands_bicolors_filtered_tapped))
-        # for card in cards_lands_bicolors_filtered_tapped:
-        #     print('   ', card['produced_mana'], ' ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-
-        print('Land types not matching commander:', land_types_invalid)
-        print('Sacrifice/Search lands:', len(cards_lands_sacrifice_search))
-        print('Sacrifice/Search lands (not tapped or untappable):',
-              len(cards_lands_sacrifice_search_no_tapped))
-        for card in cards_lands_sacrifice_search_no_tapped:
-            print('   ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-
-        print('Lands producers of mana that are non-basic:', len(cards_lands_producers_non_basic))
-        print('')
-        # NOTE: those fetchable lands are useless
-        # print('   Lands producers of mana that are non-basic (fetchable):',
-        #       len(cards_lands_producers_non_basic_fetchable))
-        # for card in cards_lands_producers_non_basic_fetchable:
-        #     print('      ', card['name'], ' ', join_oracle_texts(card))
-        # print('')
-        print('   Lands producers of mana that are non-basic (no colorless):',
-              len(cards_lands_producers_non_basic_no_colorless))
-        for card in cards_lands_producers_non_basic_no_colorless:
-            print('      ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-        print('   Lands producers of mana that are non-basic (colorless):',
-              len(cards_lands_producers_non_basic_colorless))
-        for card in cards_lands_producers_non_basic_colorless:
-            print('      ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-        print('')
-
-        # TODO select monocolor lands to match 37 lands cards (at the end)
-        #      42 cards recommanded: @see https://www.channelfireball.com/article/What-s-an-Optimal-Mana-Curve-and-Land-Ramp-Count-for-Commander/e22caad1-b04b-4f8a-951b-a41e9f08da14/
-        #      - 3 land for each 5 ramp cards
-        #      - 2 land for each 5 draw cards
-
-        # # TODO select 5 ramp cards that are land related (search or play)
-        cards_ramp_cards_land_fetch = []
-        cards_ramp_cards_land_fetch_rest = []
-        cards_ramp_cards_land_fetch_artifacts = []
-        cards_ramp_cards_land_fetch_instants = []
-        cards_ramp_cards_land_fetch_sorcery = []
-        cards_ramp_cards_land_fetch_enchantments = []
-        cards_ramp_cards_land_fetch_creatures = []
-        cards_ramp_cards_land_fetch_channel = []
+        commander_common_feature = []
         for card in cards_ok:
-            card_oracle_texts = list(get_oracle_texts(card))
-            card_oracle_texts_low = list(map(str.lower, card_oracle_texts))
-            if (bool(list(search_strings(RAMP_CARDS_LAND_FETCH_REGEX, card_oracle_texts_low)))
-                    and not list(search_strings(land_types_invalid_regex, card_oracle_texts_low))
-                    and not list(search_strings(r'(you|target player|opponent).*discard',
-                                                card_oracle_texts_low))
-                    and card['name'] not in ['Mana Severance', 'Settle the Wreckage']
-                    and not filter_lands(card)):
-                if bool(list(in_strings('channel', card_oracle_texts_low))):
-                    cards_ramp_cards_land_fetch_channel.append(card)
-                elif ('creature' in card['type_line'].lower()
-                        or 'vehicle' in card['type_line'].lower()):
-                    cards_ramp_cards_land_fetch_creatures.append(card)
-                elif 'instant' in card['type_line'].lower():
-                    cards_ramp_cards_land_fetch_instants.append(card)
-                elif 'sorcery' in card['type_line'].lower():
-                    cards_ramp_cards_land_fetch_sorcery.append(card)
-                elif 'enchantment' in card['type_line'].lower():
-                    cards_ramp_cards_land_fetch_enchantments.append(card)
-                elif 'artifact' in card['type_line'].lower():
-                    cards_ramp_cards_land_fetch_artifacts.append(card)
-                else:
-                    cards_ramp_cards_land_fetch_rest.append(card)
-           #elif card['name'] == "Archaeomancer's Map":
-           #    print('DEBUG', RAMP_CARDS_LAND_FETCH_REGEX)
-           #    print('DEBUG', card['name'], 'text:', '|'.join(card_oracle_texts_low))
-           #    print('DEBUG', card['name'], 'match?:', bool(list(search_strings(RAMP_CARDS_LAND_FETCH_REGEX, card_oracle_texts_low))))
-           #    print('DEBUG', card['name'], 'invalid land?:', not list(search_strings(land_types_invalid_regex, card_oracle_texts_low)))
-           #    print('DEBUG', card['name'], 'discard?:', not list(search_strings(r'(you|target player|opponent).*discard', card_oracle_texts_low)))
-           #    print('DEBUG', card['name'], 'land?:', not filter_lands(card))
-        cards_ramp_cards_land_fetch_rest = order_cards_by_cmc_and_name(cards_ramp_cards_land_fetch_rest)
-        cards_ramp_cards_land_fetch_enchantments = order_cards_by_cmc_and_name(cards_ramp_cards_land_fetch_enchantments)
-        cards_ramp_cards_land_fetch_artifacts = order_cards_by_cmc_and_name(cards_ramp_cards_land_fetch_artifacts)
-        cards_ramp_cards_land_fetch_creatures = order_cards_by_cmc_and_name(cards_ramp_cards_land_fetch_creatures)
-        cards_ramp_cards_land_fetch_channel = order_cards_by_cmc_and_name(cards_ramp_cards_land_fetch_channel)
-        cards_ramp_cards_land_fetch_instants = order_cards_by_cmc_and_name(cards_ramp_cards_land_fetch_instants)
-        cards_ramp_cards_land_fetch_sorcery = order_cards_by_cmc_and_name(cards_ramp_cards_land_fetch_sorcery)
-        cards_ramp_cards_land_fetch = order_cards_by_cmc_and_name(
-            cards_ramp_cards_land_fetch_rest +
-            cards_ramp_cards_land_fetch_enchantments +
-            cards_ramp_cards_land_fetch_artifacts +
-            cards_ramp_cards_land_fetch_creatures +
-            cards_ramp_cards_land_fetch_channel +
-            cards_ramp_cards_land_fetch_instants +
-            cards_ramp_cards_land_fetch_sorcery)
-        print('Ramp cards land fetch (total):', len(cards_ramp_cards_land_fetch))
+            for regexp in COMMANDER_FEATURES_REGEXES:
+                if list(search_strings(regexp, map(str.lower, get_oracle_texts(card)))):
+                    commander_common_feature.append(card)
+                    break
+        print('Commander feature in common:', len(commander_common_feature))
         print('')
-        print('   Ramp cards land fetch (enchantments):', len(cards_ramp_cards_land_fetch_enchantments))
-        for card in cards_ramp_cards_land_fetch_enchantments:
-            print('      ', card['mana_cost'] if 'mana_cost' in card else '  ?  ', ' ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-        print('   Ramp cards land fetch (artifacts):', len(cards_ramp_cards_land_fetch_artifacts))
-        for card in cards_ramp_cards_land_fetch_artifacts:
-            print('      ', card['mana_cost'] if 'mana_cost' in card else '  ?  ', ' ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-        print('   Ramp cards land fetch (creature):', len(cards_ramp_cards_land_fetch_creatures))
-        for card in cards_ramp_cards_land_fetch_creatures:
-            print('      ', card['mana_cost'] if 'mana_cost' in card else '  ?  ', ' ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-        cards_ramp_cards_land_fetch_land_cycling = order_cards_by_cmc_and_name(list(
-            filter(
-                lambda c: not list(search_strings(land_types_invalid_regex,
-                                                  map(str.lower, get_oracle_texts(c)))),
-                filter(
-                    lambda c: list(search_strings(LAND_CYCLING_REGEX,
-                                                  map(str.lower, get_oracle_texts(c)))),
-                    cards_ok))))
-        print('')
-        print('   Ramp cards land fetch (land cycling):', len(cards_ramp_cards_land_fetch_land_cycling))
-        for card in cards_ramp_cards_land_fetch_land_cycling:
-            print('      ', card['mana_cost'] if 'mana_cost' in card else '  ?  ', ' ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-        print('   Ramp cards land fetch (channel):', len(cards_ramp_cards_land_fetch_channel))
-        for card in cards_ramp_cards_land_fetch_channel:
-            print('      ', card['mana_cost'] if 'mana_cost' in card else '  ?  ', ' ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-        print('   Ramp cards land fetch (instants):', len(cards_ramp_cards_land_fetch_instants))
-        for card in cards_ramp_cards_land_fetch_instants:
-            print('      ', card['mana_cost'] if 'mana_cost' in card else '  ?  ', ' ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-        print('   Ramp cards land fetch (sorcery):', len(cards_ramp_cards_land_fetch_sorcery))
-        for card in cards_ramp_cards_land_fetch_sorcery:
-            print('      ', card['mana_cost'] if 'mana_cost' in card else '  ?  ', ' ', card['name'], ' ', join_oracle_texts(card))
-        print('')
-        print('   Ramp cards land fetch (rest):', len(cards_ramp_cards_land_fetch_rest))
-        for card in cards_ramp_cards_land_fetch_rest:
-            print('      ', card['mana_cost'] if 'mana_cost' in card else '  ?  ', ' ', card['name'], ' ', join_oracle_texts(card))
+        commander_common_feature_organized = organize_by_type(commander_common_feature)
+        for card_type, cards_list in commander_common_feature_organized.items():
+            if cards_list:
+                print('   Commander feature in common ('+card_type+'):', len(cards_list))
+                print('')
+                for card in order_cards_by_cmc_and_name(cards_list):
+                    if card_type == 'unknown':
+                        print_card(card, print_power_def = False, indent = 5,
+                                   trunc_mana = 15, merge_type_power_def = False)
+                    else:
+                        print_card(card, print_power_def = (card_type == 'creature'),
+                                   print_type = False, indent = 5, trunc_mana = 15,
+                                   print_mana = (card_type not in ['land','stickers']))
+                print('')
         print('')
 
+        lands = list(filter(filter_lands, cards_ok))
+        land_types_invalid = [COLOR_TO_LAND[c] for c in INVALID_COLORS]
+        print('Land types not matching commander:', land_types_invalid)
+        print('')
+        land_types_invalid_regex = r'('+('|'.join(land_types_invalid)).lower()+')'
+        assist_land_selection(lands, land_types_invalid_regex)
 
-        # cards_ramp_cards = []
-        # for card in cards_ok:
-        #     card_oracle_texts = list(get_oracle_texts(card))
-        #     card_oracle_texts_low = list(map(str.lower, card_oracle_texts))
-        #     if (bool(list(search_strings(RAMP_CARDS_REGEX, card_oracle_texts_low)))
-        #             and not list(search_strings(land_types_invalid_regex, card_oracle_texts_low))
-        #             and not list(search_strings(r'(you|target player|opponent).*discard',
-        #                                         card_oracle_texts_low))
-        #             and not list(search_strings(
-        #                             r'\{T\}, Sacrifice [A-Za-z\' ]+: Add one mana of any color\.',
-        #                             get_oracle_texts(card)))
-        #             and not list(in_strings('graveyard', card_oracle_texts_low))
-        #             and not list(in_strings('{T}: Add one mana of any color', card_oracle_texts))
-        #             and not filter_lands(card)):
-        #         cards_ramp_cards.append(card)
-        # cards_ramp_cards = list(sorted(cards_ramp_cards, key=lambda c: c['cmc']))
-        # new_total_cards = len(cards_ramp_cards)
-        # print('Ramp cards:', new_total_cards)
-        # for card in cards_ramp_cards:
-        #     print('   ', card['mana_cost'] if 'mana_cost' in card else ' ? ', ' ', card['type_line'] ,' ', card['name'], ' ', join_oracle_texts(card))
-        # print('')
+        # TODO select 5 ramp cards that are land related (search or play)
+        cards_ramp_cards_land_fetch = assist_land_fetch(cards_ok, land_types_invalid_regex)
+
+        cards_ramp_cards = []
+        for card in [c for c in cards_ok if c not in cards_ramp_cards_land_fetch]:
+            if card['name'] not in ["Strata Scythe", "Trench Gorger"]:
+                oracle_texts = list(get_oracle_texts(card))
+                oracle_texts_low = list(map(str.lower, oracle_texts))
+                if (list(search_strings(RAMP_CARDS_REGEX, oracle_texts_low))
+                        and not list(search_strings(RAMP_CARDS_EXCLUDE_REGEX, oracle_texts_low))
+                        and not list(search_strings(land_types_invalid_regex, oracle_texts_low))
+                        # and not list(search_strings(r'(you|target player|opponent).*discard',
+                        #                             oracle_texts_low))
+                        # and not list(in_strings('graveyard', oracle_texts_low))
+                        and not filter_lands(card)):
+                    cards_ramp_cards.append(card)
+        cards_ramp_cards = list(sorted(cards_ramp_cards, key=lambda c: c['cmc']))
+        new_total_cards = len(cards_ramp_cards)
+        print('Ramp cards:', new_total_cards)
+        for card in cards_ramp_cards:
+            print_card(card)
+        print('')
+
+        # TODO: remove
+        # with open('ramp_cards.missing.txt', 'r', encoding='utf-8') as f_miss_read:
+        #     for card_name in f_miss_read:
+        #         card_name = card_name.strip()
+        #         found = False
+        #         card = None
+        #         for c in cards_ok:
+        #             if c['name'] == card_name and not filter_lands(c):
+        #                 found = True
+        #                 card = c
+        #                 break
+        #         # if not found:
+        #         #     print('NOT PLAYABLE', card_name)
+        #         no_print = False
+        #         for c in cards_ramp_cards:
+        #             if c['name'] == card_name:
+        #                 #print('ALREADY IN', card_name)
+        #                 no_print = True
+        #                 break
+        #         for c in cards_ramp_cards_land_fetch:
+        #             if c['name'] == card_name:
+        #                 #print('FETCHER', card_name)
+        #                 no_print = True
+        #                 break
+        #         if found and not no_print and card:
+        #             print_card(card, trunc_text = False)
 
         # TODO include the cards below ?
         # allow tapped lands
@@ -1133,6 +1386,14 @@ def main():
         # TODO select 7 tutors
 
         # TODO select 25 cards combos (starting with the commander and the selected cards)
+        # WIP:
+        #  - list the commanders features keyword that may combo
+        #  - from that build a regex to match thoses features against other cards
+        #  - based on the list of others thoses cards, find the ones that
+        #      * requires only 2 cards to combos, ordered by CMC
+        #      * requires 3 cards to combos, ordered by CMC
+        #      * contains an existing deck card in their combo
+        #      * contains a card in their combos that have a high number of combos
 
         # TODO select 7 removal cards (3 creatures, 4 artifacts/enchantments)
 
@@ -1144,6 +1405,8 @@ def main():
 
         # for index, card in enumerate(deck_cards):
             # print(card['name'])
+
+        # for each turn N present a list of possible N-drop cards
 
 if __name__ == '__main__':
     main()
