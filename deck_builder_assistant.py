@@ -30,10 +30,21 @@ COLOR_TO_LAND = {
     'B': 'Swamp'}
 COMMANDER_NAME = 'Queza, Augur of Agonies'
 COMMANDER_KEYWORDS = []  # ['Draw', 'Lifegain', 'Lifeloss'] doesn't work, not an evergreen ability ?
+DRAW_CARDS_REGEX = [
+    r'(when|whenever|instead) [^.]+ (,|you [^.]+ (and )?)draw (a card|your)',
+    'put (that card|one pile) into your hand',
+    '([:,.] )?(you( may)? |then |target player |and )?draws? \\w+ cards?( for each)?',
+    '(then )?draws? cards equal']
+DRAW_CARDS_EXCLUDE_REGEX = r'toto'
 COMMANDER_FEATURES_REGEXES = [
-    r'(opponent|target player|owner).*(lose|have lost).*life',
-    r'(you|target player|owner).*(gain|have gained).*life',
-    r'(you|target player|owner).*(draw|have draw)']
+#    r'(opponent|target player|owner).*(lose|have lost).*life',
+#    r'(you|target player|owner).*(gain|have gained).*life',
+#    r'(you|target player|owner).*(draw|have draw)',
+]
+COMMANDER_FEATURES_EXCLUDE_REGEX = r'('+('|'.join([
+    '[Ss]acrifice|[Ee]xile|[Tt]ransform|[Dd]iscard',
+#    '^\\s*((First strike|Flying|Skulk|Deathtouch)( \\([^)]+\\))?)?\\s*Lifelink \\([^)]+\\)\\s*$'
+]))+')'
 COMMANDER_COLOR_IDENTITY = set([])
 COMMANDER_COLOR_IDENTITY_COUNT = 0
 INVALID_COLORS = set([])
@@ -921,36 +932,36 @@ def assist_land_selection(lands, land_types_invalid_regex):
         print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
     print('')
 
-    print('Lands producers of mana that are non-basic:', len(cards_lands_producers_non_basic))
-    print('')
-    # NOTE: those fetchable lands are useless
-    # cards_lands_producers_non_basic_fetchable = list(filter(
-    #     lambda c: re.search(
-    #         r'('+('|'.join(map(str.lower, COLOR_TO_LAND.values())))+')',
-    #         c['type_line'].lower()),
-    #     cards_lands_producers_non_basic))
-    # print('   Lands producers of mana that are non-basic (fetchable):',
-    #       len(cards_lands_producers_non_basic_fetchable))
-    # for card in cards_lands_producers_non_basic_fetchable:
-    #     print('      ', card['name'], ' ', join_oracle_texts(card))
+    # print('Lands producers of mana that are non-basic:', len(cards_lands_producers_non_basic))
     # print('')
-    print('   Lands producers of mana that are non-basic (no colorless):',
-           len(cards_lands_producers_non_basic_no_colorless))
-    print('')
-    print('   Lands producers of mana that are non-basic (no colorless, not tapped):',
-           len(cards_lands_producers_non_basic_no_colorless_not_tapped))
-    for card in cards_lands_producers_non_basic_no_colorless_not_tapped:
-        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
-    print('')
-    print('   Lands producers of mana that are non-basic (no colorless, tapped):',
-           len(cards_lands_producers_non_basic_no_colorless_tapped))
-    print('')
-    print('   Lands producers of mana that are non-basic (colorless):',
-            len(cards_lands_producers_non_basic_colorless))
-    for card in cards_lands_producers_non_basic_colorless:
-        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
-    print('')
-    print('')
+    # # NOTE: those fetchable lands are useless
+    # # cards_lands_producers_non_basic_fetchable = list(filter(
+    # #     lambda c: re.search(
+    # #         r'('+('|'.join(map(str.lower, COLOR_TO_LAND.values())))+')',
+    # #         c['type_line'].lower()),
+    # #     cards_lands_producers_non_basic))
+    # # print('   Lands producers of mana that are non-basic (fetchable):',
+    # #       len(cards_lands_producers_non_basic_fetchable))
+    # # for card in cards_lands_producers_non_basic_fetchable:
+    # #     print('      ', card['name'], ' ', join_oracle_texts(card))
+    # # print('')
+    # print('   Lands producers of mana that are non-basic (no colorless):',
+    #        len(cards_lands_producers_non_basic_no_colorless))
+    # print('')
+    # print('   Lands producers of mana that are non-basic (no colorless, not tapped):',
+    #        len(cards_lands_producers_non_basic_no_colorless_not_tapped))
+    # for card in cards_lands_producers_non_basic_no_colorless_not_tapped:
+    #     print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
+    # print('')
+    # print('   Lands producers of mana that are non-basic (no colorless, tapped):',
+    #        len(cards_lands_producers_non_basic_no_colorless_tapped))
+    # print('')
+    # print('   Lands producers of mana that are non-basic (colorless):',
+    #         len(cards_lands_producers_non_basic_colorless))
+    # for card in cards_lands_producers_non_basic_colorless:
+    #     print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
+    # print('')
+    # print('')
 
     # TODO select monocolor lands to match 37 lands cards (at the end)
     #      42 cards recommanded: @see https://www.channelfireball.com/article/What-s-an-Optimal-Mana-Curve-and-Land-Ramp-Count-for-Commander/e22caad1-b04b-4f8a-951b-a41e9f08da14/
@@ -983,10 +994,10 @@ def assist_land_fetch(cards, land_types_invalid_regex):
                     cards_ramp_cards_land_fetch.append(card)
 
     cards_ramp_cards_land_fetch_by_feature = {
-        'to hand': [],
-        'to hand (conditional)': [],
         'to battlefield': [],
         'to battlefield (conditional)': [],
+        'to hand': [],
+        'to hand (conditional)': [],
         'to top of library': [],
         'to top of library (conditional)': []}
     for card in cards_ramp_cards_land_fetch:
@@ -1008,12 +1019,13 @@ def assist_land_fetch(cards, land_types_invalid_regex):
         else:
             print('UNKNOWN', print_card(card, return_str = True, trunc_text = False))
 
-    print('Ramp cards land fetch (total):', len(cards_ramp_cards_land_fetch))
+    print('Land fetch (total):', len(cards_ramp_cards_land_fetch))
     print('')
 
     for feature, cards_list in cards_ramp_cards_land_fetch_by_feature.items():
         if cards_list:
-            print('   Ramp cards land fetch ('+feature+'):', len(cards_list))
+            extra_text = 'RAMP CARDS ' if feature.startswith('to battlefield') else ''
+            print('   '+extra_text+'Land fetch ('+feature+'):', len(cards_list))
             if ' (conditional)' in feature:
                 print('')
                 continue
@@ -1034,7 +1046,7 @@ def assist_land_fetch(cards, land_types_invalid_regex):
 
             for card_type, sub_cards_list in organized.items():
                 if sub_cards_list:
-                    print('      Ramp cards land fetch '+feature+' ('+card_type+'):',
+                    print('      '+extra_text+'Land fetch '+feature+' ('+card_type+'):',
                           len(sub_cards_list))
                     for card in sub_cards_list:
                         if card_type == 'unknown':
@@ -1046,12 +1058,12 @@ def assist_land_fetch(cards, land_types_invalid_regex):
                                        print_mana = (card_type not in ['land','stickers']))
                     print('')
             if land_cycling:
-                print('      Ramp cards land fetch '+feature+' (land cycling):', len(land_cycling))
+                print('      Land fetch '+feature+' (land cycling):', len(land_cycling))
                 for card in order_cards_by_cmc_and_name(land_cycling):
                     print_card(card, indent = 8)
                 print('')
             if channel:
-                print('      Ramp cards land fetch '+feature+' (channel):', len(channel))
+                print('      Land fetch '+feature+' (channel):', len(channel))
                 for card in order_cards_by_cmc_and_name(channel):
                     print_card(card, indent = 8)
                 print('')
@@ -1171,6 +1183,94 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
         print(card_line)
     return card_line
 
+def assist_ramp_cards(cards, land_types_invalid_regex):
+    """Show pre-selected ramp cards organised by features, for the user to select some"""
+
+    cards_ramp_cards = []
+    for card in cards:
+        if card['name'] not in ["Strata Scythe", "Trench Gorger"]:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_low = list(map(str.lower, oracle_texts))
+            if (list(search_strings(RAMP_CARDS_REGEX, oracle_texts_low))
+                    and not list(search_strings(RAMP_CARDS_EXCLUDE_REGEX, oracle_texts_low))
+                    and not list(search_strings(land_types_invalid_regex, oracle_texts_low))
+                    # and not list(search_strings(r'(you|target player|opponent).*discard',
+                    #                             oracle_texts_low))
+                    # and not list(in_strings('graveyard', oracle_texts_low))
+                    and not filter_lands(card)):
+                cards_ramp_cards.append(card)
+    cards_ramp_cards = list(sorted(cards_ramp_cards, key=lambda c: c['cmc']))
+    print('Ramp cards:', len(cards_ramp_cards))
+    for card in cards_ramp_cards:
+        print_card(card)
+    print('')
+
+    return cards_ramp_cards
+
+def assist_draw_cards(cards, land_types_invalid_regex):
+    """Show pre-selected draw cards organised by features, for the user to select some"""
+
+    cards_draw_cards = []
+    cards_draw_cards_repeating = []
+    cards_draw_cards_multiple = []
+    if DRAW_CARDS_REGEX:
+        for card in cards:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_low = list(map(str.lower, oracle_texts))
+            for regexp in DRAW_CARDS_REGEX:
+                if (list(search_strings(regexp, oracle_texts_low))
+                        and not list(search_strings(DRAW_CARDS_EXCLUDE_REGEX, oracle_texts_low))
+                        and not list(search_strings(land_types_invalid_regex, oracle_texts_low))
+                        # and not list(search_strings(r'(you|target player|opponent).*discard',
+                        #                             oracle_texts_low))
+                        # and not list(in_strings('graveyard', oracle_texts_low))
+                        and not filter_lands(card)):
+                    cards_draw_cards.append(card)
+
+                    if (list(search_strings(r'(whenever|everytime|at begining|upkeep|\\{t\\}:)',
+                                           oracle_texts_low))
+                            and not list(in_strings("next turn's upkeep", oracle_texts_low))
+                            and not list(in_strings('Sacrifice '+card['name'], oracle_texts))
+                            and not list(search_strings(
+                                r'whenever [^.]+ deals combat damage to a player',
+                                oracle_texts_low))):
+                        cards_draw_cards_repeating.append(card)
+
+                    elif list(search_strings(r'draws? (two|three|four|five|six|seven|X) ',
+                                             oracle_texts_low)):
+                        cards_draw_cards_multiple.append(card)
+                    break
+    cards_draw_cards = list(sorted(cards_draw_cards, key=lambda c: c['cmc']))
+    print('Draw cards:', len(cards_draw_cards))
+    print('')
+
+    cards_draw_cards_not_repeating_cmc_3 = order_cards_by_cmc_and_name(list(filter(
+        lambda c: int(c['cmc']) <= 3,
+        [c for c in cards_draw_cards if c not in cards_draw_cards_repeating
+         and c not in cards_draw_cards_multiple])))
+
+    print('Draw cards (repeating):', len(cards_draw_cards_repeating))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_draw_cards_repeating):
+        print_card(card)
+    print('')
+
+    print('Draw cards (multiple):',
+          len(cards_draw_cards_multiple))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_draw_cards_multiple):
+        print_card(card)
+    print('')
+
+    print('Draw cards (not repeating, CMC <= 3):',
+          len(cards_draw_cards_not_repeating_cmc_3))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_draw_cards_not_repeating_cmc_3):
+        print_card(card)
+    print('')
+
+    return cards_draw_cards
+
 def main():
     """Main program"""
     global COMMANDER_COLOR_IDENTITY
@@ -1286,29 +1386,40 @@ def main():
         new_total_cards = len(cards_common_keyword)
         print('One common keyword', commander_keywords, ':', new_total_cards)
         print('')
-        commander_common_feature = []
-        for card in cards_ok:
-            for regexp in COMMANDER_FEATURES_REGEXES:
-                if list(search_strings(regexp, map(str.lower, get_oracle_texts(card)))):
-                    commander_common_feature.append(card)
-                    break
-        print('Commander feature in common:', len(commander_common_feature))
-        print('')
-        commander_common_feature_organized = organize_by_type(commander_common_feature)
-        for card_type, cards_list in commander_common_feature_organized.items():
-            if cards_list:
-                print('   Commander feature in common ('+card_type+'):', len(cards_list))
-                print('')
-                for card in order_cards_by_cmc_and_name(cards_list):
-                    if card_type == 'unknown':
-                        print_card(card, print_power_def = False, indent = 5,
-                                   trunc_mana = 15, merge_type_power_def = False)
-                    else:
-                        print_card(card, print_power_def = (card_type == 'creature'),
-                                   print_type = False, indent = 5, trunc_mana = 15,
-                                   print_mana = (card_type not in ['land','stickers']))
-                print('')
-        print('')
+        if COMMANDER_FEATURES_REGEXES:
+            commander_common_feature = []
+            for card in cards_ok:
+                oracle_texts = get_oracle_texts(card)
+                oracle_texts = list(map(
+                    lambda t: t.replace(
+                        '(Damage dealt by this creature also causes you to gain that much life.)',
+                        ''),
+                    oracle_texts))
+                oracle_texts_low = list(map(str.lower, oracle_texts))
+                for regexp in COMMANDER_FEATURES_REGEXES:
+                    if list(search_strings(regexp, oracle_texts_low)):
+                        if (COMMANDER_FEATURES_EXCLUDE_REGEX == r'()'
+                            or not re.search(COMMANDER_FEATURES_EXCLUDE_REGEX,
+                                            join_oracle_texts(card))):
+                            commander_common_feature.append(card)
+                            break
+            print('Commander feature in common:', len(commander_common_feature))
+            print('')
+            commander_common_feature_organized = organize_by_type(commander_common_feature)
+            for card_type, cards_list in commander_common_feature_organized.items():
+                if cards_list:
+                    print('   Commander feature in common ('+card_type+'):', len(cards_list))
+                    print('')
+                    for card in order_cards_by_cmc_and_name(cards_list):
+                        if card_type == 'unknown':
+                            print_card(card, print_power_def = False, indent = 5,
+                                    trunc_mana = 15, merge_type_power_def = False)
+                        else:
+                            print_card(card, print_power_def = (card_type == 'creature'),
+                                    print_type = False, indent = 5, trunc_mana = 15,
+                                    print_mana = (card_type not in ['land','stickers']))
+                    print('')
+            print('')
 
         lands = list(filter(filter_lands, cards_ok))
         land_types_invalid = [COLOR_TO_LAND[c] for c in INVALID_COLORS]
@@ -1320,68 +1431,51 @@ def main():
         # TODO select 5 ramp cards that are land related (search or play)
         cards_ramp_cards_land_fetch = assist_land_fetch(cards_ok, land_types_invalid_regex)
 
-        cards_ramp_cards = []
-        for card in [c for c in cards_ok if c not in cards_ramp_cards_land_fetch]:
-            if card['name'] not in ["Strata Scythe", "Trench Gorger"]:
-                oracle_texts = list(get_oracle_texts(card))
-                oracle_texts_low = list(map(str.lower, oracle_texts))
-                if (list(search_strings(RAMP_CARDS_REGEX, oracle_texts_low))
-                        and not list(search_strings(RAMP_CARDS_EXCLUDE_REGEX, oracle_texts_low))
-                        and not list(search_strings(land_types_invalid_regex, oracle_texts_low))
-                        # and not list(search_strings(r'(you|target player|opponent).*discard',
-                        #                             oracle_texts_low))
-                        # and not list(in_strings('graveyard', oracle_texts_low))
-                        and not filter_lands(card)):
-                    cards_ramp_cards.append(card)
-        cards_ramp_cards = list(sorted(cards_ramp_cards, key=lambda c: c['cmc']))
-        new_total_cards = len(cards_ramp_cards)
-        print('Ramp cards:', new_total_cards)
-        for card in cards_ramp_cards:
-            print_card(card)
-        print('')
-
-        # TODO: remove
-        # with open('ramp_cards.missing.txt', 'r', encoding='utf-8') as f_miss_read:
-        #     for card_name in f_miss_read:
-        #         card_name = card_name.strip()
-        #         found = False
-        #         card = None
-        #         for c in cards_ok:
-        #             if c['name'] == card_name and not filter_lands(c):
-        #                 found = True
-        #                 card = c
-        #                 break
-        #         # if not found:
-        #         #     print('NOT PLAYABLE', card_name)
-        #         no_print = False
-        #         for c in cards_ramp_cards:
-        #             if c['name'] == card_name:
-        #                 #print('ALREADY IN', card_name)
-        #                 no_print = True
-        #                 break
-        #         for c in cards_ramp_cards_land_fetch:
-        #             if c['name'] == card_name:
-        #                 #print('FETCHER', card_name)
-        #                 no_print = True
-        #                 break
-        #         if found and not no_print and card:
-        #             print_card(card, trunc_text = False)
-
-        # TODO include the cards below ?
-        # allow tapped lands
-        #    {1}     "Amulet of Vigor": permanents entering the game are untapped
-        #    {2} 1/3 "Tiller Engine": lands entering the game are untapped or tap an opponent's nonland permanent
-        # combo with anything that produces 2 or more mana
-        #    {2}{U} 2/3 "Clever Conjurer": {T} untap target permanent
-        #    {2}{U} 1/3 "Vizier of Tumbling Sand's": {T} untap target permanent
-        #    {2}{U} 2/2 "Kelpie Guide": {T} untap target permanent
-        #    {2}{U} 1/4 "Ioreth of the Healing House": {T} untap target permanent or two legd-creatures
-
         # TODO select 5 multicolor ramp cards (artifacts ?)
-
         # TODO select 5 colorless ramp cards (artifacts ?)
+        cards_ramp_cards = assist_ramp_cards(
+            [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
+            land_types_invalid_regex)
 
         # TODO select 10 draw cards
+        cards_draw_cards = assist_draw_cards(
+            [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
+            land_types_invalid_regex)
+
+        with open('draw_cards.list.txt', 'r', encoding='utf-8') as f_draw_read:
+            print('')
+            print('Draw card missing')
+            print('')
+            for card_name in f_draw_read:
+                card_name = card_name.strip()
+                found = False
+                card = None
+                for c in cards_ok:
+                    if c['name'] == card_name and not filter_lands(c):
+                        found = True
+                        card = c
+                        break
+                # if not found:
+                #     print('NOT PLAYABLE', card_name)
+                no_print = False
+                for c in cards_ramp_cards:
+                    if c['name'] == card_name:
+                        # print('RAMP', card_name)
+                        no_print = True
+                        break
+                for c in cards_ramp_cards_land_fetch:
+                    if c['name'] == card_name:
+                        # print('FETCHER', card_name)
+                        no_print = True
+                        break
+                for c in cards_draw_cards:
+                    if c['name'] == card_name:
+                        # print('DRAW', card_name)
+                        no_print = True
+                        break
+                if found and not no_print and card:
+                    print_card(card, trunc_text = False)
+
 
         # TODO select 7 tutors
 
