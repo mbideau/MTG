@@ -36,6 +36,22 @@ DRAW_CARDS_REGEX = [
     '([:,.] )?(you( may)? |then |target player |and )?draws? \\w+ cards?( for each)?',
     '(then )?draws? cards equal']
 DRAW_CARDS_EXCLUDE_REGEX = r'toto'
+TUTOR_CARDS_REGEX = [
+    (r"search(es)? [^.]+ cards?[, ][^.]* puts? (it|that card|those cards|them) "+
+     r"(into (your|that player's) (hand|graveyard)|onto the battlefield|on top|\w+ from the top)"),
+    r'(search|exile) [^.]+ cards?.*\. (you may )?put (one|that card) (into your hand|onto the battlefield)',
+    r'search [^.]+ card\. [^.]+ put it onto the battlefield',
+    r"search [^.]+ cards?.*\. you may cast that card without paying its mana cost",
+    r'search [^.]+ cards? and exile it.*. you may [^.]+ play that card',
+    r'search [^.]+ cards [^.]+ and exile them.*, then draws a card for each card exiled',
+    r'reveal cards from [^.]*your library[^.]*, then put that card into your hand',
+    r'search [^.]+ cards?.* put (that [^.]*card onto the battlefield|put it into your hand)',
+]
+TUTOR_CARDS_JOIN_TEXTS_REGEX = [
+    r"search [^.]+ cards?, exile them[,. ].*\. (draw a card|put that card into its owner's hand)",
+    r'search [^.]+ cards?, exile them[,. ].* you may cast a spell [^.]+ from among cards exiled',
+]
+TUTOR_CARDS_EXCLUDE_REGEX = r'toto'
 COMMANDER_FEATURES_REGEXES = [
 #    r'(opponent|target player|owner).*(lose|have lost).*life',
 #    r'(you|target player|owner).*(gain|have gained).*life',
@@ -1271,6 +1287,44 @@ def assist_draw_cards(cards, land_types_invalid_regex):
 
     return cards_draw_cards
 
+def assist_tutor_cards(cards, land_types_invalid_regex):
+    """Show pre-selected tutor cards organised by features, for the user to select some"""
+
+    cards_tutor_cards = []
+    for card in cards:
+        if 'tutor' in card['name'].lower():
+            cards_tutor_cards.append(card)
+        elif TUTOR_CARDS_REGEX:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_low = list(map(str.lower, oracle_texts))
+            card_found = False
+            for regexp in TUTOR_CARDS_REGEX:
+                if (list(search_strings(regexp, oracle_texts_low))
+                        and not list(search_strings(TUTOR_CARDS_EXCLUDE_REGEX, oracle_texts_low))
+                        and not list(search_strings(land_types_invalid_regex, oracle_texts_low))
+                        and not filter_lands(card)):
+                    cards_tutor_cards.append(card)
+                    card_found = True
+                    break
+            if not card_found and TUTOR_CARDS_JOIN_TEXTS_REGEX:
+                for regexp in TUTOR_CARDS_JOIN_TEXTS_REGEX:
+                    if (re.search(regexp, join_oracle_texts(card).lower())
+                            and not list(search_strings(TUTOR_CARDS_EXCLUDE_REGEX, oracle_texts_low))
+                            and not list(search_strings(land_types_invalid_regex, oracle_texts_low))
+                            and not filter_lands(card)):
+                        cards_tutor_cards.append(card)
+                        card_found = True
+                        break
+
+    cards_tutor_cards = list(sorted(cards_tutor_cards, key=lambda c: c['cmc']))
+    print('Tutor cards:', len(cards_tutor_cards))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_tutor_cards):
+        print_card(card)
+    print('')
+
+    return cards_tutor_cards
+
 def main():
     """Main program"""
     global COMMANDER_COLOR_IDENTITY
@@ -1478,6 +1532,48 @@ def main():
 
 
         # TODO select 7 tutors
+        cards_tutor_cards = assist_tutor_cards(
+            [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
+            land_types_invalid_regex)
+
+        with open('tutor_cards.list.txt', 'r', encoding='utf-8') as f_tutor_read:
+            print('')
+            print('Tutor card missing')
+            print('')
+            for card_name in f_tutor_read:
+                card_name = card_name.strip()
+                found = False
+                card = None
+                for c in cards_ok:
+                    if c['name'] == card_name and not filter_lands(c):
+                        found = True
+                        card = c
+                        break
+                # if not found:
+                #     print('NOT PLAYABLE', card_name)
+                no_print = False
+                for c in cards_ramp_cards:
+                    if c['name'] == card_name:
+                        print('RAMP', card_name)
+                        no_print = True
+                        break
+                for c in cards_ramp_cards_land_fetch:
+                    if c['name'] == card_name:
+                        print('FETCHER', card_name)
+                        no_print = True
+                        break
+                for c in cards_draw_cards:
+                    if c['name'] == card_name:
+                        print('DRAW', card_name)
+                        # no_print = True
+                        break
+                for c in cards_tutor_cards:
+                    if c['name'] == card_name:
+                        # print('TUTOR', card_name)
+                        no_print = True
+                        break
+                if found and not no_print and card:
+                    print_card(card, trunc_text = False)
 
         # TODO select 25 cards combos (starting with the commander and the selected cards)
         # WIP:
