@@ -51,7 +51,11 @@ TUTOR_CARDS_JOIN_TEXTS_REGEX = [
     r"search [^.]+ cards?, exile them[,. ].*\. (draw a card|put that card into its owner's hand)",
     r'search [^.]+ cards?, exile them[,. ].* you may cast a spell [^.]+ from among cards exiled',
 ]
-TUTOR_CARDS_EXCLUDE_REGEX = r'toto'
+TUTOR_CARDS_EXCLUDE_REGEX = r'(cards? named|same name)'
+TUTOR_GENERIC_EXCLUDE_REGEX = r'('+('|'.join([
+    'mercenary', 'cleric', 'dinosaur', 'rebel', 'squadron', 'trap', 'sliver', 'goblin', 'pirate',
+    'vampire', 'rune', 'vehicle', 'demon', 'faerie', 'myr', 'merfolk', 'curse', 'ninja',
+    'assembly-worker', 'spirit']))+')'
 COMMANDER_FEATURES_REGEXES = [
 #    r'(opponent|target player|owner).*(lose|have lost).*life',
 #    r'(you|target player|owner).*(gain|have gained).*life',
@@ -124,6 +128,7 @@ LAND_RECOMMENDED_BICOLORS = [
     'Isolated Chapel',  # Isolated Chapel enters the battlefield tapped unless you control a Plains or a Swamp. {T}: Add {W} or {B}.
     'Drowned Catacomb',  # Drowned Catacomb enters the battlefield tapped unless you control an Island or a Swamp. {T}: Add {U} or {B}.
     ]
+
 
 # Add a parameter to express if a 1-drop at turn 1 is important,
 # that will exclude land that are not usable at turn 1 or colorless at turn 1
@@ -427,11 +432,19 @@ def in_strings(string, texts):
     return filter(lambda t: string in t, texts)
 
 def in_strings_exclude(string, exclude, texts):
-    """Search for absence of a string in a list of strings or without the exclude string"""
+    """Search for a string in a list of strings without the exclude string"""
+    return filter(lambda t: string in t and exclude not in t, texts)
+
+def in_strings_excludes(string, excludes, texts):
+    """Search a string in a list of strings without the excludes strings"""
+    return filter(lambda t: string in t and not bool([e for e in excludes if e in t]), texts)
+
+def not_in_strings_exclude(string, exclude, texts):
+    """Search for absence of a string in a list of strings or with the exclude string"""
     return filter(lambda t: string not in t or exclude in t, texts)
 
 def not_in_strings_excludes(string, excludes, texts):
-    """Search a string in a list of strings without the excludes strings"""
+    """Search for absence of a string in a list of strings or with the excludes strings"""
     return filter(lambda t: string not in t or bool([e for e in excludes if e in t]), texts)
 
 def search_strings(regex, texts):
@@ -526,8 +539,8 @@ def filter_lands(item):
 
 def filter_sacrifice(item):
     """Remove card if its text contains 'sacrifice' without containing 'unless'"""
-    return bool(list(in_strings_exclude('sacrifice', 'unless',
-                                        map(str.lower, get_oracle_texts(item)))))
+    return bool(list(not_in_strings_exclude('sacrifice', 'unless',
+                                            map(str.lower, get_oracle_texts(item)))))
 
 def filter_tapped(item):
     """Remove card if its text contains ' tapped'"""
@@ -574,8 +587,8 @@ def compute_invalid_colors():
 def join_oracle_texts(card, truncate = False):
     """Return a string with card's oracle text joined"""
     return ' // '.join(map(
-        lambda c: truncate_text(c, int((truncate - 1) / 2) if truncate and 'card_faces' in card
-                                else truncate),
+        lambda c: truncate_text(c, ((int(truncate / 2) - 2) if int(truncate) > 4
+                                    and 'card_faces' in card else truncate)),
         get_oracle_texts(card))).replace('\n', ' ')
 
 def order_cards_by_cmc_and_name(cards_list):
@@ -1316,11 +1329,128 @@ def assist_tutor_cards(cards, land_types_invalid_regex):
                         card_found = True
                         break
 
-    cards_tutor_cards = list(sorted(cards_tutor_cards, key=lambda c: c['cmc']))
+    # filter out not generic enough cards
+    cards_tutor_cards_generic = list(filter(
+        lambda c: (not list(search_strings(TUTOR_GENERIC_EXCLUDE_REGEX,
+                                          map(str.lower, get_oracle_texts(c))))
+                   or (re.search(TUTOR_GENERIC_EXCLUDE_REGEX, c['name'].lower())
+                       and list(in_strings('When '+c['name']+' enters the battlefield',
+                                           get_oracle_texts(c))))),
+        cards_tutor_cards))
+
+    # regroup some cards by theme
+    cards_tutor_cards_against = list(filter(
+        lambda c: (list(in_strings_excludes(
+                        'opponent',
+                        ['opponent choose', 'choose an opponent', 'opponent gains control',
+                         'opponent looks at'],
+                        map(str.lower, get_oracle_texts(c))))
+                   or list(in_strings('counter target', map(str.lower, get_oracle_texts(c))))
+                   or list(in_strings('destroy', map(str.lower, get_oracle_texts(c))))),
+        cards_tutor_cards_generic))
+    cards_tutor_cards_aura = list(filter(
+        lambda c: list(in_strings_exclude('Aura', 'Auramancers', get_oracle_texts(c))),
+        cards_tutor_cards_generic))
+    cards_tutor_cards_arcane = list(filter(
+        lambda c: list(in_strings('Arcane', get_oracle_texts(c))),
+        cards_tutor_cards_generic))
+    cards_tutor_cards_equipment = list(filter(
+        lambda c: list(in_strings('Equipment', get_oracle_texts(c))),
+        cards_tutor_cards_generic))
+    cards_tutor_cards_artifact = list(filter(
+        lambda c: list(in_strings_excludes(
+            'artifact', ['artifact and/or', 'artifact or', 'artifact, creature'],
+            map(str.lower, get_oracle_texts(c)))),
+        [c for c in cards_tutor_cards_generic if c not in cards_tutor_cards_equipment]))
+    cards_tutor_cards_transmute = list(filter(
+        lambda c: list(in_strings('transmute', map(str.lower, get_oracle_texts(c)))),
+        [c for c in cards_tutor_cards_generic if c not in cards_tutor_cards_equipment]))
+    cards_tutor_cards_graveyard = list(filter(
+        lambda c: c['name'] != 'Dark Petition' and list(in_strings_excludes(
+            'graveyard', ["if you don't, put it into", 'graveyard from play',
+                          'the other into your graveyard', 'cast from a graveyard'],
+            map(str.lower, get_oracle_texts(c)))),
+        cards_tutor_cards_generic))
+
+    cards_tutor_cards_themed = (
+            cards_tutor_cards_against
+            + cards_tutor_cards_aura
+            + cards_tutor_cards_arcane
+            + cards_tutor_cards_equipment
+            + cards_tutor_cards_artifact
+            + cards_tutor_cards_transmute
+            + cards_tutor_cards_graveyard)
+    cards_tutor_cards_not_themed = [
+        c for c in cards_tutor_cards_generic if c not in cards_tutor_cards_themed]
+
+    cards_tutor_cards_to_battlefield = list(filter(
+        lambda c: list(in_strings('onto the battlefield', map(str.lower, get_oracle_texts(c)))),
+        cards_tutor_cards_not_themed))
+    cards_tutor_cards_to_hand = list(filter(
+        lambda c: list(in_strings('hand', map(str.lower, get_oracle_texts(c)))),
+        [c for c in cards_tutor_cards_not_themed if c not in cards_tutor_cards_to_battlefield]))
+    cards_tutor_cards_to_top_library = list(filter(
+        lambda c: (list(in_strings('that card on top', map(str.lower, get_oracle_texts(c))))
+                   or list(in_strings('third from the top', map(str.lower, get_oracle_texts(c))))),
+        [c for c in cards_tutor_cards_not_themed if c not in cards_tutor_cards_to_battlefield
+         and c not in cards_tutor_cards_to_hand]))
+    cards_tutor_cards_other = [
+        c for c in cards_tutor_cards_not_themed if c not in cards_tutor_cards_to_battlefield
+        and c not in cards_tutor_cards_to_hand and c not in cards_tutor_cards_to_top_library]
+
     print('Tutor cards:', len(cards_tutor_cards))
     print('')
-    for card in order_cards_by_cmc_and_name(cards_tutor_cards):
-        print_card(card)
+    print('   Tutor cards (not generic enough):',
+          len(cards_tutor_cards) - len(cards_tutor_cards_generic))
+    print('')
+    print('   Tutor cards (not themed):', len(cards_tutor_cards_not_themed))
+    print('')
+    print('      Tutor cards (not themed, to battlefield):', len(cards_tutor_cards_to_battlefield))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_tutor_cards_to_battlefield):
+        print_card(card, indent = 5)
+    print('')
+    print('      Tutor cards (not themed, to hand):', len(cards_tutor_cards_to_hand))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_tutor_cards_to_hand):
+        print_card(card, indent = 5)
+    print('')
+    print('      Tutor cards (not themed, to top of library):',
+          len(cards_tutor_cards_to_top_library))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_tutor_cards_to_top_library):
+        print_card(card, indent = 5)
+    print('')
+    print('      Tutor cards (not themed, other):', len(cards_tutor_cards_other))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_tutor_cards_other):
+        print_card(card, indent = 5)
+    print('')
+
+    print('   Tutor cards (themed):', len(cards_tutor_cards_themed))
+    print('')
+    print('      Tutor cards (themed, against):', len(cards_tutor_cards_against))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_tutor_cards_against):
+        print_card(card, indent = 5)
+    print('')
+    print('      Tutor cards (themed, transmute):', len(cards_tutor_cards_transmute))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_tutor_cards_transmute):
+        print_card(card, indent = 5)
+    print('')
+    print('      Tutor cards (themed, artifact):', len(cards_tutor_cards_artifact))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_tutor_cards_artifact):
+        print_card(card, indent = 5)
+    print('')
+    print('      Tutor cards (themed, graveyard):', len(cards_tutor_cards_graveyard))
+    print('')
+    print('      Tutor cards (themed, Equipment):', len(cards_tutor_cards_equipment))
+    print('')
+    print('      Tutor cards (themed, Aura):', len(cards_tutor_cards_aura))
+    print('')
+    print('      Tutor cards (themed, Arcane):', len(cards_tutor_cards_arcane))
     print('')
 
     return cards_tutor_cards
@@ -1496,39 +1626,39 @@ def main():
             [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
             land_types_invalid_regex)
 
-        with open('draw_cards.list.txt', 'r', encoding='utf-8') as f_draw_read:
-            print('')
-            print('Draw card missing')
-            print('')
-            for card_name in f_draw_read:
-                card_name = card_name.strip()
-                found = False
-                card = None
-                for c in cards_ok:
-                    if c['name'] == card_name and not filter_lands(c):
-                        found = True
-                        card = c
-                        break
-                # if not found:
-                #     print('NOT PLAYABLE', card_name)
-                no_print = False
-                for c in cards_ramp_cards:
-                    if c['name'] == card_name:
-                        # print('RAMP', card_name)
-                        no_print = True
-                        break
-                for c in cards_ramp_cards_land_fetch:
-                    if c['name'] == card_name:
-                        # print('FETCHER', card_name)
-                        no_print = True
-                        break
-                for c in cards_draw_cards:
-                    if c['name'] == card_name:
-                        # print('DRAW', card_name)
-                        no_print = True
-                        break
-                if found and not no_print and card:
-                    print_card(card, trunc_text = False)
+        # with open('draw_cards.list.txt', 'r', encoding='utf-8') as f_draw_read:
+        #     print('')
+        #     print('Draw card missing')
+        #     print('')
+        #     for card_name in f_draw_read:
+        #         card_name = card_name.strip()
+        #         found = False
+        #         card = None
+        #         for c in cards_ok:
+        #             if c['name'] == card_name and not filter_lands(c):
+        #                 found = True
+        #                 card = c
+        #                 break
+        #         # if not found:
+        #         #     print('NOT PLAYABLE', card_name)
+        #         no_print = False
+        #         for c in cards_ramp_cards:
+        #             if c['name'] == card_name:
+        #                 # print('RAMP', card_name)
+        #                 no_print = True
+        #                 break
+        #         for c in cards_ramp_cards_land_fetch:
+        #             if c['name'] == card_name:
+        #                 # print('FETCHER', card_name)
+        #                 no_print = True
+        #                 break
+        #         for c in cards_draw_cards:
+        #             if c['name'] == card_name:
+        #                 # print('DRAW', card_name)
+        #                 no_print = True
+        #                 break
+        #         if found and not no_print and card:
+        #             print_card(card, trunc_text = False)
 
 
         # TODO select 7 tutors
@@ -1536,44 +1666,44 @@ def main():
             [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
             land_types_invalid_regex)
 
-        with open('tutor_cards.list.txt', 'r', encoding='utf-8') as f_tutor_read:
-            print('')
-            print('Tutor card missing')
-            print('')
-            for card_name in f_tutor_read:
-                card_name = card_name.strip()
-                found = False
-                card = None
-                for c in cards_ok:
-                    if c['name'] == card_name and not filter_lands(c):
-                        found = True
-                        card = c
-                        break
-                # if not found:
-                #     print('NOT PLAYABLE', card_name)
-                no_print = False
-                for c in cards_ramp_cards:
-                    if c['name'] == card_name:
-                        print('RAMP', card_name)
-                        no_print = True
-                        break
-                for c in cards_ramp_cards_land_fetch:
-                    if c['name'] == card_name:
-                        print('FETCHER', card_name)
-                        no_print = True
-                        break
-                for c in cards_draw_cards:
-                    if c['name'] == card_name:
-                        print('DRAW', card_name)
-                        # no_print = True
-                        break
-                for c in cards_tutor_cards:
-                    if c['name'] == card_name:
-                        # print('TUTOR', card_name)
-                        no_print = True
-                        break
-                if found and not no_print and card:
-                    print_card(card, trunc_text = False)
+        # with open('tutor_cards.list.txt', 'r', encoding='utf-8') as f_tutor_read:
+        #     print('')
+        #     print('Tutor card missing')
+        #     print('')
+        #     for card_name in f_tutor_read:
+        #         card_name = card_name.strip()
+        #         found = False
+        #         card = None
+        #         for c in cards_ok:
+        #             if c['name'] == card_name and not filter_lands(c):
+        #                 found = True
+        #                 card = c
+        #                 break
+        #         # if not found:
+        #         #     print('NOT PLAYABLE', card_name)
+        #         no_print = False
+        #         for c in cards_ramp_cards:
+        #             if c['name'] == card_name:
+        #                 print('RAMP', card_name)
+        #                 no_print = True
+        #                 break
+        #         for c in cards_ramp_cards_land_fetch:
+        #             if c['name'] == card_name:
+        #                 print('FETCHER', card_name)
+        #                 no_print = True
+        #                 break
+        #         for c in cards_draw_cards:
+        #             if c['name'] == card_name:
+        #                 print('DRAW', card_name)
+        #                 # no_print = True
+        #                 break
+        #         for c in cards_tutor_cards:
+        #             if c['name'] == card_name:
+        #                 # print('TUTOR', card_name)
+        #                 no_print = True
+        #                 break
+        #         if found and not no_print and card:
+        #             print_card(card, trunc_text = False)
 
         # TODO select 25 cards combos (starting with the commander and the selected cards)
         # WIP:
