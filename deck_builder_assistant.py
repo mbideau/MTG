@@ -56,6 +56,38 @@ TUTOR_GENERIC_EXCLUDE_REGEX = r'('+('|'.join([
     'mercenary', 'cleric', 'dinosaur', 'rebel', 'squadron', 'trap', 'sliver', 'goblin', 'pirate',
     'vampire', 'rune', 'vehicle', 'demon', 'faerie', 'myr', 'merfolk', 'curse', 'ninja',
     'assembly-worker', 'spirit']))+')'
+REMOVAL_CARDS_REGEX = [
+    r'(destroy|remove|exile|put that card in the graveyard)'
+]
+REMOVAL_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
+    "exile target player's graveyard",
+    'remove any number of [^.]*counter',
+    'counters? removed this way',
+    'remove (x|that many)? [^.]*counters',
+    'exile [^.]+ you control',
+    'exile this permanent',
+    r'return [^.+] card from your graveyard.* exile it',
+    "exile target card from defending player's graveyard",
+    'look at [^.]+ your library[, ].*exile (one|that card)',
+    'rather than cast this card from your hand, pay [^.]+ and exile it',
+    'remove [^.]+ from combat',
+    'remove [^.]+ counters? from',
+    r'exile [^.]+\. at the beginning of the next end step, return it',
+    'exile [^]*, then return it to the battlefield transformed',
+    r'you may exile [^.]+\. If you do, return them',
+    "exiles? [^.]+ (of|from) (your|a|their|target player's) (hand|graveyard|library)",
+    'you may cast this card from exile',
+    'search [.^]+ library [^.]+ cards? and exile (it|them)',
+    'if [^.]+ would die, exile it instead',
+    'if [^.]+ would be put into your graveyard, exile it instead',
+    "this effect doesn't remove",
+    'look at [^.]+ library, then exile',
+    'remove [^.]+ from it',
+    'exile it instead of putting it into',
+    r'destroy target \w+ you own',
+    'when this spell card is put into a graveyard after resolving, exile it',
+]))+')'
+
 COMMANDER_FEATURES_REGEXES = [
 #    r'(opponent|target player|owner).*(lose|have lost).*life',
 #    r'(you|target player|owner).*(gain|have gained).*life',
@@ -408,8 +440,8 @@ def get_oracle_texts(card):
             else ([face['oracle_text'] for face in card['card_faces']]
                   if 'card_faces' in card and card['card_faces'] else ''))
 
-def get_mana_costs(card):
-    """Return a list of 'mana_costs', one per card's faces"""
+def get_mana_cost(card):
+    """Return a list of 'mana_cost', one per card's faces"""
     return ([card['mana_cost']] if 'mana_cost' in card
             else ([face['mana_cost'] for face in card['card_faces']]
                   if 'card_faces' in card and card['card_faces'] else ''))
@@ -592,8 +624,10 @@ def join_oracle_texts(card, truncate = False):
         get_oracle_texts(card))).replace('\n', ' ')
 
 def order_cards_by_cmc_and_name(cards_list):
-    """Return an ordered cards list by CMC and Name"""
-    return list(sorted(cards_list, key=lambda c: str(c['cmc'])+c['name']))
+    """Return an ordered cards list by CMC + Mana cost length as a decimal, and Name"""
+    return list(sorted(cards_list, key=lambda c: (
+        str(c['cmc'] + float('0.'+str(len(c['mana_cost']) if 'mana_cost' in c else '0')))
+        +c['name'])))
 
 def print_all_cards_stats(cards, total_cards):
     """Print statistics about all cards"""
@@ -835,7 +869,7 @@ def assist_land_selection(lands, land_types_invalid_regex):
         filter(filter_tapped_or_untappable, cards_lands_sacrifice_search))
     selected_lands += cards_lands_sacrifice_search_no_tapped
 
-    # non-basic lands that are producers
+    # nonbasic lands that are producers
     cards_lands_producers_non_basic = list(filter(
             lambda c: (
                 bool(list(search_strings(r'(\s+|\n|\r)?\{T\}: Add \{\w\}',
@@ -961,7 +995,7 @@ def assist_land_selection(lands, land_types_invalid_regex):
         print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
     print('')
 
-    # print('Lands producers of mana that are non-basic:', len(cards_lands_producers_non_basic))
+    # print('Lands producers of mana that are nonbasic:', len(cards_lands_producers_non_basic))
     # print('')
     # # NOTE: those fetchable lands are useless
     # # cards_lands_producers_non_basic_fetchable = list(filter(
@@ -969,23 +1003,23 @@ def assist_land_selection(lands, land_types_invalid_regex):
     # #         r'('+('|'.join(map(str.lower, COLOR_TO_LAND.values())))+')',
     # #         c['type_line'].lower()),
     # #     cards_lands_producers_non_basic))
-    # # print('   Lands producers of mana that are non-basic (fetchable):',
+    # # print('   Lands producers of mana that are nonbasic (fetchable):',
     # #       len(cards_lands_producers_non_basic_fetchable))
     # # for card in cards_lands_producers_non_basic_fetchable:
     # #     print('      ', card['name'], ' ', join_oracle_texts(card))
     # # print('')
-    # print('   Lands producers of mana that are non-basic (no colorless):',
+    # print('   Lands producers of mana that are nonbasic (no colorless):',
     #        len(cards_lands_producers_non_basic_no_colorless))
     # print('')
-    # print('   Lands producers of mana that are non-basic (no colorless, not tapped):',
+    # print('   Lands producers of mana that are nonbasic (no colorless, not tapped):',
     #        len(cards_lands_producers_non_basic_no_colorless_not_tapped))
     # for card in cards_lands_producers_non_basic_no_colorless_not_tapped:
     #     print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
     # print('')
-    # print('   Lands producers of mana that are non-basic (no colorless, tapped):',
+    # print('   Lands producers of mana that are nonbasic (no colorless, tapped):',
     #        len(cards_lands_producers_non_basic_no_colorless_tapped))
     # print('')
-    # print('   Lands producers of mana that are non-basic (colorless):',
+    # print('   Lands producers of mana that are nonbasic (colorless):',
     #         len(cards_lands_producers_non_basic_colorless))
     # for card in cards_lands_producers_non_basic_colorless:
     #     print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_power_def = False, indent = 5)
@@ -1178,8 +1212,8 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
     len_type = '16' if not trunc_type else str(trunc_type)
 
     card_line_format  = '{indent:<'+str(indent)+'}'
-    card_line_format += ('{mana_costs:>'+('21' if not trunc_mana else str(trunc_mana))+'} | '
-                         if print_mana else '{mana_costs}')
+    card_line_format += ('{mana_cost:>'+('21' if not trunc_mana else str(trunc_mana))+'} | '
+                         if print_mana else '{mana_cost}')
     if merge_type_power_def:
         if print_power_def or print_type:
             if is_creature(card) and print_power_def:
@@ -1198,8 +1232,8 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
 
     card_line_params = {
         'indent': ' ',
-        'mana_costs': truncate_text((' // '.join(get_mana_costs(card)) if print_mana else ''),
-                                    trunc_mana),
+        'mana_cost': truncate_text((' // '.join(get_mana_cost(card)) if print_mana else ''),
+                                   trunc_mana),
         'type_lines': truncate_text((' // '.join(get_type_lines(card)) if print_type else ''),
                                     trunc_type),
         'name': truncate_text(card['name'], trunc_name),
@@ -1455,6 +1489,167 @@ def assist_tutor_cards(cards, land_types_invalid_regex):
 
     return cards_tutor_cards
 
+def assist_removal_cards(cards):
+    """Show pre-selected removal cards organised by features, for the user to select some"""
+
+    cards_removal = []
+    if REMOVAL_CARDS_REGEX:
+        for card in cards:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_filtered = list(map(lambda t: (
+                t.replace('(Then exile this card. You may cast the creature later from exile.)', '')
+                 .replace('(Then exile this card. You may cast the artifact later from exile.)', '')
+                 .replace("(Effects that say "+'"destroy"'+" don't destroy this artifact.)", '')
+                 .replace("(Damage and effects that say "+'"destroy"'+" don't destroy them.)", '')
+                 .replace("(Damage and effects that say "+'"destroy"'+" don't destroy it.)", '')
+                 .replace("(Any amount of damage it deals to a creature is enough to destroy it.)",
+                          '')
+                 .replace("(You may cast this spell for its cleave cost. If you do, remove the"+
+                          " words in square brackets.)", '')
+                 .replace("(If you discard this card, discard it into exile. When you do, cast it"+
+                          " for its madness cost or put it into your graveyard.)", '')
+                 .replace('(You may cast this card from your graveyard for its flashback cost. '+
+                          'Then exile it.)', '')
+                 .replace('(You may cast this card from your graveyard for its flashback cost '+
+                          'and any additional costs. Then exile it.)', '')
+                 .replace('Exile this Saga, then return it to the battlefield transformed', '')
+                 .replace('Exile '+card['name'], '')
+                 .replace('destroy '+card['name'], '')
+                 .replace('If '+card['name']+' would be put into a graveyard from anywhere, '+
+                          'exile it instead.', '')),
+                oracle_texts))
+            if 'card_faces' in card:
+                for face in card['card_faces']:
+                    oracle_texts_filtered = list(map(lambda t: (
+                        t.replace('Exile '+face['name'], '')
+                         .replace('destroy '+face['name'], '')
+                         .replace('If '+face['name']+' would be put into a graveyard from anywhere'+
+                                  ', exile it instead.', '')),
+                        oracle_texts_filtered))
+            oracle_texts_low = list(map(str.lower, oracle_texts_filtered))
+            for regexp in REMOVAL_CARDS_REGEX:
+                if (list(search_strings(regexp, oracle_texts_low))
+                        and not list(search_strings(REMOVAL_CARDS_EXCLUDE_REGEX,
+                                                    oracle_texts_low))):
+                    cards_removal.append(card)
+                    break
+
+    cards_removal_cmc_3 = list(filter(lambda c: c['cmc'] <= 3, cards_removal))
+
+    cards_removal_cmc_3_destroy_land = list(filter(lambda c: bool(list(
+        search_strings('destroy target (nonbasic )?land', map(str.lower, get_oracle_texts(c))))),
+        cards_removal_cmc_3))
+    cards_removal_cmc_3_not_destroy_land = [
+        c for c in cards_removal_cmc_3 if c not in cards_removal_cmc_3_destroy_land]
+
+    # group by target type
+    cards_removal_cmc_3_destroy_permanent = list(filter(lambda c: bool(list(
+        search_strings(r'(destroy|exile) target (\w+ )?permanent',
+                       map(str.lower, get_oracle_texts(c))))),
+        cards_removal_cmc_3_not_destroy_land))
+    cards_removal_cmc_3_destroy_three = list(filter(lambda c: bool(list(
+        search_strings(r'(destroy|exile) target (\w+ )?('
+                       + 'creature.* enchantment.* artifact'
+                       +'|creature.* artifact.* enchantment'
+                       +'|enchantment.* creature.* artifact'
+                       +'|enchantment.* artifact.* creature'
+                       +'|artifact.* enchantment.* creature'
+                       +'|artifact.* creature.* enchantment)',
+                       map(str.lower, get_oracle_texts(c))))),
+        cards_removal_cmc_3_not_destroy_land))
+    cards_removal_cmc_3_destroy_two = list(filter(lambda c: bool(list(
+        search_strings(r'(destroy|exile) target (\w+ )?('
+                       + 'creature.* enchantment'
+                       +'|creature.* artifact'
+                       +'|enchantment.* creature'
+                       +'|enchantment.* artifact'
+                       +'|artifact.* enchantment'
+                       +'|artifact.* creature)',
+                       map(str.lower, get_oracle_texts(c))))),
+        [c for c in cards_removal_cmc_3_not_destroy_land
+         if c not in cards_removal_cmc_3_destroy_three]))
+    cards_removal_cmc_3_destroy_creature = list(filter(lambda c: bool(list(
+        search_strings(r'(destroy|exile) target (\w+ )?creature',
+                       map(str.lower, get_oracle_texts(c))))),
+        cards_removal_cmc_3_not_destroy_land))
+    cards_removal_cmc_3_destroy_creature_no_sacrifice = list(filter(lambda c: bool(list(
+        not_in_strings_exclude('as an additional cost to cast this spell, sacrifice a creature',
+                               'sacrifice a creature or discard',
+                               map(str.lower, get_oracle_texts(c))))),
+        cards_removal_cmc_3_destroy_creature))
+    cards_removal_cmc_3_destroy_creature_no_exclusion = list(filter(lambda c: bool(list(
+        search_strings(r'([Dd]estroy|[Ee]xile) target creature( or \w+)?( an opponent controls)?\.',
+                       get_oracle_texts(c)))),
+        cards_removal_cmc_3_destroy_creature_no_sacrifice))
+    cards_removal_cmc_3_destroy_creature_exclusion = [
+        c for c in cards_removal_cmc_3_destroy_creature
+        if c not in cards_removal_cmc_3_destroy_creature_no_exclusion]
+    cards_removal_cmc_3_destroy_enchantment = list(filter(lambda c: bool(list(
+        search_strings(r'(destroy|exile) target (\w+ )?enchantment',
+                       map(str.lower, get_oracle_texts(c))))),
+        cards_removal_cmc_3_not_destroy_land))
+    cards_removal_cmc_3_destroy_other = [
+        c for c in cards_removal_cmc_3_not_destroy_land
+        if c not in cards_removal_cmc_3_destroy_permanent
+        and c not in cards_removal_cmc_3_destroy_three
+        and c not in cards_removal_cmc_3_destroy_two
+        and c not in cards_removal_cmc_3_destroy_creature
+        and c not in cards_removal_cmc_3_destroy_enchantment]
+
+    print('Removal cards:', len(cards_removal))
+    print('')
+    print('   Removal cards (CMC <= 3, not destroy land):',
+          len(cards_removal_cmc_3_not_destroy_land))
+    print('')
+    print('      Removal cards (CMC <= 3, destroy permanent):',
+          len(cards_removal_cmc_3_destroy_permanent))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_permanent):
+        print_card(card, indent = 5, trunc_text = False)
+    print('')
+    print('      Removal cards (CMC <= 3, destroy three choices):',
+          len(cards_removal_cmc_3_destroy_three))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_three):
+        print_card(card, indent = 5, trunc_text = False)
+    print('')
+    print('      Removal cards (CMC <= 3, destroy two choices):',
+          len(cards_removal_cmc_3_destroy_two))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_two):
+        print_card(card, indent = 5, trunc_text = False)
+    print('')
+    print('      Removal cards (CMC <= 3, destroy creature, sacrifice one):',
+          len(cards_removal_cmc_3_destroy_creature)
+          - len(cards_removal_cmc_3_destroy_creature_no_sacrifice))
+    print('')
+    print('      Removal cards (CMC <= 3, destroy creature, no exclusion):',
+          len(cards_removal_cmc_3_destroy_creature_no_exclusion))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_creature_no_exclusion):
+        print_card(card, indent = 5, trunc_text = False)
+    print('')
+    print('      Removal cards (CMC <= 3, destroy creature, exclusion):',
+          len(cards_removal_cmc_3_destroy_creature_exclusion))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_creature_exclusion):
+        print_card(card, indent = 5, trunc_text = False)
+    print('')
+    print('      Removal cards (CMC <= 3, destroy enchantments):',
+          len(cards_removal_cmc_3_destroy_enchantment))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_enchantment):
+        print_card(card, indent = 5, trunc_text = False)
+    print('')
+    print('      Removal cards (CMC <= 3, destroy other):',
+          len(cards_removal_cmc_3_destroy_other))
+    print('')
+    for card in order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_other):
+        print_card(card, indent = 5, trunc_text = False)
+    print('')
+
+    return cards_removal
+
 def main():
     """Main program"""
     global COMMANDER_COLOR_IDENTITY
@@ -1666,6 +1861,11 @@ def main():
             [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
             land_types_invalid_regex)
 
+        # TODO select 7 removal cards (3 creatures, 4 artifacts/enchantments)
+        cards_removal = assist_removal_cards([
+            c for c in cards_ok if c not in cards_ramp_cards
+            and c not in cards_draw_cards and c not in cards_tutor_cards])
+
         # with open('tutor_cards.list.txt', 'r', encoding='utf-8') as f_tutor_read:
         #     print('')
         #     print('Tutor card missing')
@@ -1714,8 +1914,6 @@ def main():
         #      * requires 3 cards to combos, ordered by CMC
         #      * contains an existing deck card in their combo
         #      * contains a card in their combos that have a high number of combos
-
-        # TODO select 7 removal cards (3 creatures, 4 artifacts/enchantments)
 
         # TODO select 3 board wipe cards
 
