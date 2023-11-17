@@ -8,10 +8,13 @@ Deck builder using the Scryfall JSON cards collection
 import sys
 import json
 import re
+import csv
 from urllib.request import urlopen
 from pathlib import Path
 from math import comb, prod
+from datetime import datetime
 # import pprint
+import networkx as nx
 
 XMAGE_COMMANDER_BANNED_LIST_URL = 'https://github.com/magefree/mage/raw/master/Mage.Server.Plugins/Mage.Deck.Constructed/src/mage/deck/Commander.java'
 XMAGE_DUELCOMMANDER_BANNED_LIST_URL = 'https://github.com/magefree/mage/raw/master/Mage.Server.Plugins/Mage.Deck.Constructed/src/mage/deck/DuelCommander.java'
@@ -29,7 +32,8 @@ COLOR_TO_LAND = {
     'U': 'Island',
     'B': 'Swamp'}
 COMMANDER_NAME = 'Queza, Augur of Agonies'
-COMMANDER_KEYWORDS = []  # ['Draw', 'Lifegain', 'Lifeloss'] doesn't work, not an evergreen ability ?
+COMMANDER_KEYWORDS = []
+COMMANDER_COMBOS_REGEX = r'('+('|'.join(['draw', 'life', 'win']))+')'
 DRAW_CARDS_REGEX = [
     r'(when|whenever|instead) [^.]+ (,|you [^.]+ (and )?)draw (a card|your)',
     'put (that card|one pile) into your hand',
@@ -438,26 +442,32 @@ def get_oracle_texts(card):
     """Return a list of 'oracle_text', one per card's faces"""
     return ([card['oracle_text']] if 'oracle_text' in card
             else ([face['oracle_text'] for face in card['card_faces']]
-                  if 'card_faces' in card and card['card_faces'] else ''))
+                  if 'card_faces' in card and card['card_faces'] else []))
 
 def get_mana_cost(card):
     """Return a list of 'mana_cost', one per card's faces"""
     return ([card['mana_cost']] if 'mana_cost' in card
             else ([face['mana_cost'] for face in card['card_faces']]
-                  if 'card_faces' in card and card['card_faces'] else ''))
+                  if 'card_faces' in card and card['card_faces'] else []))
 
 def get_type_lines(card):
     """Return a list of 'type_line', one per card's faces"""
     return ([card['type_line']] if 'type_line' in card
             else ([face['type_line'] for face in card['card_faces']]
-                  if 'card_faces' in card and card['card_faces'] else ''))
+                  if 'card_faces' in card and card['card_faces'] else []))
 
-def get_power_defenses(card):
+def get_power_toughness(card):
     """Return a list of 'power' and 'toughness', one per card's faces"""
     return ([card['power']+'/'+card['toughness']] if 'power' in card and 'toughness' in card
             else ([face['power']+'/'+face['toughness'] for face in card['card_faces']
                    if 'power' in face and 'toughness' in face]
-                  if 'card_faces' in card and card['card_faces'] else ''))
+                  if 'card_faces' in card and card['card_faces'] else []))
+
+def get_keywords(card):
+    """Return a list of 'keywords', one per card's faces"""
+    return ([card['keywords']] if 'keywords' in card
+            else ([face['keywords'] for face in card['keywords']]
+                  if 'card_faces' in card and card['card_faces'] else []))
 
 def in_strings(string, texts):
     """Search a string in a list of strings"""
@@ -1205,10 +1215,11 @@ def organize_by_type(cards):
 
 def print_card(card, indent = 0, print_mana = True, print_type = True, print_power_def = True,
                trunc_name = 25, trunc_type = 16, trunc_text = 115, trunc_mana = 21,
-               merge_type_power_def = True, return_str = False):
+               merge_type_power_def = True, return_str = False, print_text = True,
+               print_keywords = False):
     """Display a card or return a string representing it"""
     if merge_type_power_def and (not trunc_type or trunc_type > 10):
-        trunc_type = 10  # default power/defense length
+        trunc_type = 10  # default power/toughness length
     len_type = '16' if not trunc_type else str(trunc_type)
 
     card_line_format  = '{indent:<'+str(indent)+'}'
@@ -1217,18 +1228,19 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
     if merge_type_power_def:
         if print_power_def or print_type:
             if is_creature(card) and print_power_def:
-                card_line_format += '{power_defenses:>'+len_type+'} | '
+                card_line_format += '{power_toughnesss:>'+len_type+'} | '
             elif print_type:
                 card_line_format += '{type_lines:>'+len_type+'} | '
             else:
-                card_line_format += '{power_defenses:<'+len_type+'} | '
+                card_line_format += '{power_toughnesss:<'+len_type+'} | '
         else:
-            card_line_format += '{power_defenses}{type_lines}'  # will print nothing
+            card_line_format += '{power_toughnesss}{type_lines}'  # will print nothing
     else:
-        card_line_format += '{power_defenses:>10} | ' if print_power_def else '{power_defenses}'
+        card_line_format += '{power_toughnesss:>10} | ' if print_power_def else '{power_toughnesss}'
         card_line_format += '{type_lines:<'+len_type+'} | ' if print_type else '{type_lines}'
     card_line_format += '{name:<'+('40' if not trunc_name else str(trunc_name))+'} | '
-    card_line_format += '{oracle_texts}'
+    card_line_format += '{oracle_texts}' if print_text else ''
+    card_line_format += ((' | ' if print_text else '')+'{keywords}') if print_keywords else ''
 
     card_line_params = {
         'indent': ' ',
@@ -1237,10 +1249,12 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
         'type_lines': truncate_text((' // '.join(get_type_lines(card)) if print_type else ''),
                                     trunc_type),
         'name': truncate_text(card['name'], trunc_name),
-        'power_defenses': '',
-        'oracle_texts': join_oracle_texts(card, trunc_text)}
+        'power_toughnesss': '',
+        'oracle_texts': join_oracle_texts(card, trunc_text) if print_text else '',
+        'keywords': (' // '.join(list(map(lambda k: ', '.join(k), get_keywords(card))))
+                     if print_keywords else '')}
     if print_power_def and is_creature(card):
-        card_line_params['power_defenses'] = ' // '.join(get_power_defenses(card))
+        card_line_params['power_toughnesss'] = ' // '.join(get_power_toughness(card))
     card_line = card_line_format.format(**card_line_params)
     if not return_str:
         print(card_line)
@@ -1312,6 +1326,10 @@ def assist_draw_cards(cards, land_types_invalid_regex):
         [c for c in cards_draw_cards if c not in cards_draw_cards_repeating
          and c not in cards_draw_cards_multiple])))
 
+    connives = list(filter(lambda c: bool(list(in_strings('connives',
+                                                          map(str.lower, get_oracle_texts(c))))),
+                           cards))
+
     print('Draw cards (repeating):', len(cards_draw_cards_repeating))
     print('')
     for card in order_cards_by_cmc_and_name(cards_draw_cards_repeating):
@@ -1322,6 +1340,13 @@ def assist_draw_cards(cards, land_types_invalid_regex):
           len(cards_draw_cards_multiple))
     print('')
     for card in order_cards_by_cmc_and_name(cards_draw_cards_multiple):
+        print_card(card)
+    print('')
+
+    print('Draw cards (connives):',
+          len(connives))
+    print('')
+    for card in order_cards_by_cmc_and_name(connives):
         print_card(card)
     print('')
 
@@ -1650,6 +1675,469 @@ def assist_removal_cards(cards):
 
     return cards_removal
 
+def assist_best_cards(cards, limit = 10):
+    """Show pre-selected best cards organised by features, for the user to select some"""
+
+    best_cards = []
+
+    # Best creature power-to-cmc
+    power_to_cmc = {}
+    for card in cards:
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if 'power' in face and 'cmc' in face and '*' not in face['power']:
+                    power = float(face['power'])
+                    cmc = float(face['cmc']) if float(face['cmc']) > 1 else 1.0
+                    ratio = round(power / cmc, 3)
+                    if ratio not in power_to_cmc:
+                        power_to_cmc[ratio] = []
+                    power_to_cmc[ratio].append(card)
+        else:
+            if 'power' in card and 'cmc' in card and '*' not in card['power']:
+                power = float(card['power'])
+                cmc = float(card['cmc']) if float(card['cmc']) > 1 else 1.0
+                ratio = round(power / cmc, 3)
+                if ratio not in power_to_cmc:
+                    power_to_cmc[ratio] = []
+                power_to_cmc[ratio].append(card)
+    power_to_cmc = dict(sorted(power_to_cmc.items(), reverse = True))
+    print('Best Power to CMC ratio:')
+    print('')
+    ratio_count = 0
+    for ratio, cards_list in power_to_cmc.items():
+        print('  ', ratio)
+        for card in order_cards_by_cmc_and_name(cards_list):
+            print_card(card, indent = 5)
+        ratio_count = ratio_count + 1
+        if ratio_count > limit:
+            break
+    print('')
+
+    # Best creature toughness-to-cmc
+    toughness_to_cmc = {}
+    for card in cards:
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if 'toughness' in face and 'cmc' in face and '*' not in face['toughness']:
+                    toughness = float(face['toughness'])
+                    cmc = float(face['cmc']) if float(face['cmc']) > 1 else 1.0
+                    ratio = round(toughness / cmc, 3)
+                    if ratio not in toughness_to_cmc:
+                        toughness_to_cmc[ratio] = []
+                    toughness_to_cmc[ratio].append(card)
+        else:
+            if 'toughness' in card and 'cmc' in card and '*' not in card['toughness']:
+                toughness = float(card['toughness'])
+                cmc = float(card['cmc']) if float(card['cmc']) > 1 else 1.0
+                ratio = round(toughness / cmc, 3)
+                if ratio not in toughness_to_cmc:
+                    toughness_to_cmc[ratio] = []
+                toughness_to_cmc[ratio].append(card)
+    toughness_to_cmc = dict(sorted(toughness_to_cmc.items(), reverse = True))
+    print('Best toughness to CMC ratio:')
+    print('')
+    ratio_count = 0
+    for ratio, cards_list in toughness_to_cmc.items():
+        print('  ', ratio)
+        for card in order_cards_by_cmc_and_name(cards_list):
+            print_card(card, indent = 5)
+        ratio_count = ratio_count + 1
+        if ratio_count > limit:
+            break
+    print('')
+
+    # Best 5 creature power and toughness to cmc
+    power_toughness_to_cmc = {}
+    for card in cards:
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if ('toughness' in face and 'cmc' in face and '*' not in face['toughness']
+                        and 'power' in face and 'cmc' in face and '*' not in face['power']):
+                    power = float(face['power'])
+                    toughness = float(face['toughness'])
+                    cmc = float(face['cmc']) if float(face['cmc']) > 1 else 1.0
+                    ratio = round((power + toughness) / cmc, 3)
+                    if ratio not in power_toughness_to_cmc:
+                        power_toughness_to_cmc[ratio] = []
+                    power_toughness_to_cmc[ratio].append(card)
+        else:
+            if ('toughness' in card and 'cmc' in card and '*' not in card['toughness']
+                    and 'power' in card and 'cmc' in card and '*' not in card['power']):
+                power = float(card['power'])
+                toughness = float(card['toughness'])
+                cmc = float(card['cmc']) if float(card['cmc']) > 1 else 1.0
+                ratio = round((power + toughness) / cmc, 3)
+                if ratio not in power_toughness_to_cmc:
+                    power_toughness_to_cmc[ratio] = []
+                power_toughness_to_cmc[ratio].append(card)
+    power_toughness_to_cmc = dict(sorted(power_toughness_to_cmc.items(), reverse = True))
+    print('Best power+toughness to CMC ratio:')
+    print('')
+    ratio_count = 0
+    for ratio, cards_list in power_toughness_to_cmc.items():
+        print('  ', ratio)
+        for card in order_cards_by_cmc_and_name(cards_list):
+            print_card(card, indent = 5)
+        ratio_count = ratio_count + 1
+        if ratio_count > limit:
+            break
+    print('')
+
+    # Best 5 creature amount of (evergreen?) keywords by cmc
+    keywords_to_cmc = {}
+    for card in cards:
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if 'keywords' in face and face['keywords'] and 'cmc' in face:
+                    keywords = len(face['keywords'])
+                    cmc = float(face['cmc']) if float(face['cmc']) > 1 else 1.0
+                    ratio = round((keywords) / cmc, 3)
+                    if ratio not in keywords_to_cmc:
+                        keywords_to_cmc[ratio] = []
+                    keywords_to_cmc[ratio].append(card)
+        else:
+            if 'keywords' in card and card['keywords'] and 'cmc' in card:
+                keywords = len(card['keywords'])
+                cmc = float(card['cmc']) if float(card['cmc']) > 1 else 1.0
+                ratio = round(keywords / cmc, 3)
+                if ratio not in keywords_to_cmc:
+                    keywords_to_cmc[ratio] = []
+                keywords_to_cmc[ratio].append(card)
+    keywords_to_cmc = dict(sorted(keywords_to_cmc.items(), reverse = True))
+    print('Best keywords count to CMC ratio:')
+    print('')
+    ratio_count = 0
+    for ratio, cards_list in keywords_to_cmc.items():
+        print('  ', ratio)
+        for card in order_cards_by_cmc_and_name(cards_list):
+            print_card(card, indent = 5, print_text = False, print_keywords = True)
+        ratio_count = ratio_count + 1
+        if ratio_count > 2:
+            break
+    print('')
+
+    # Best ? creature with first|double strike and deathtouch (and flying?)
+    deathtouch_strike = []
+    for card in cards:
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if ('keywords' in face and 'Deathtouch' in face['keywords']
+                        and ('Double strike' in face['keywords']
+                             or 'First strike' in face['keywords'])):
+                    deathtouch_strike.append(card)
+        else:
+            if ('keywords' in card and 'Deathtouch' in card['keywords']
+                    and ('Double strike' in card['keywords']
+                            or 'First strike' in card['keywords'])):
+                deathtouch_strike.append(card)
+    print('Best Deathtouch + First strike/Double strike:')
+    print('')
+    for card in order_cards_by_cmc_and_name(deathtouch_strike):
+        print_card(card, indent = 5)
+    print('')
+
+    # Best 5 creature with flying and deathtouch
+    deathtouch_flying = []
+    for card in cards:
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if ('keywords' in face and 'Deathtouch' in face['keywords']
+                        and 'Flying' in face['keywords']):
+                    deathtouch_flying.append(card)
+        else:
+            if ('keywords' in card and 'Deathtouch' in card['keywords']
+                    and 'Flying' in card['keywords']):
+                deathtouch_flying.append(card)
+    print('Best Deathtouch + Flying:')
+    print('')
+    for card in order_cards_by_cmc_and_name(deathtouch_flying):
+        print_card(card, indent = 5)
+    print('')
+
+    # Best 5 creature with flying by power|toughness
+    flying_power_to_cmc = {}
+    for card in cards:
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if ('power' in face and 'cmc' in face and '*' not in face['power']
+                        and ('keywords' in face and 'Flying' in face['keywords'])):
+                    power = float(face['power'])
+                    cmc = float(face['cmc']) if float(face['cmc']) > 1 else 1.0
+                    ratio = round(power / cmc, 3)
+                    if ratio not in flying_power_to_cmc:
+                        flying_power_to_cmc[ratio] = []
+                    flying_power_to_cmc[ratio].append(card)
+        else:
+            if ('power' in card and 'cmc' in card and '*' not in card['power']
+                    and ('keywords' in card and 'Flying' in card['keywords'])):
+                power = float(card['power'])
+                cmc = float(card['cmc']) if float(card['cmc']) > 1 else 1.0
+                ratio = round(power / cmc, 3)
+                if ratio not in flying_power_to_cmc:
+                    flying_power_to_cmc[ratio] = []
+                flying_power_to_cmc[ratio].append(card)
+    flying_power_to_cmc = dict(sorted(flying_power_to_cmc.items(), reverse = True))
+    print('Best Flying + Power to CMC ratio:')
+    print('')
+    ratio_count = 0
+    for ratio, cards_list in flying_power_to_cmc.items():
+        print('  ', ratio)
+        for card in order_cards_by_cmc_and_name(cards_list):
+            print_card(card, indent = 5)
+        ratio_count = ratio_count + 1
+        if ratio_count > limit:
+            break
+    print('')
+    flying_toughness_to_cmc = {}
+    for card in cards:
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if ('toughness' in face and 'cmc' in face and '*' not in face['toughness']
+                        and ('keywords' in face and 'Flying' in face['keywords'])):
+                    toughness = float(face['toughness'])
+                    cmc = float(face['cmc']) if float(face['cmc']) > 1 else 1.0
+                    ratio = round(toughness / cmc, 3)
+                    if ratio not in flying_toughness_to_cmc:
+                        flying_toughness_to_cmc[ratio] = []
+                    flying_toughness_to_cmc[ratio].append(card)
+        else:
+            if ('toughness' in card and 'cmc' in card and '*' not in card['toughness']
+                    and ('keywords' in card and 'Flying' in card['keywords'])):
+                toughness = float(card['toughness'])
+                cmc = float(card['cmc']) if float(card['cmc']) > 1 else 1.0
+                ratio = round(toughness / cmc, 3)
+                if ratio not in flying_toughness_to_cmc:
+                    flying_toughness_to_cmc[ratio] = []
+                flying_toughness_to_cmc[ratio].append(card)
+    flying_toughness_to_cmc = dict(sorted(flying_toughness_to_cmc.items(), reverse = True))
+    print('Best Flying + toughness to CMC ratio:')
+    print('')
+    ratio_count = 0
+    for ratio, cards_list in flying_toughness_to_cmc.items():
+        print('  ', ratio)
+        for card in order_cards_by_cmc_and_name(cards_list):
+            print_card(card, indent = 5)
+        ratio_count = ratio_count + 1
+        if ratio_count > limit:
+            break
+    print('')
+
+    # Best 5 instant|sorcery damage to cmc
+
+    # Best 5 instant|sorcery wide damage to cmc
+
+    # Best 5 copy card
+
+    return best_cards
+
+def print_combo_card_names(combo):
+    """Print card's names of a combo"""
+
+    card_names = []
+    for num in range(1, 11):
+        if combo['Card '+str(num)]:
+            card_names.append(combo['Card '+str(num)])
+    print(' + '.join(card_names))
+
+def print_tup_combo(tup_combo, indent = 0, print_header = False, max_cards = 4, max_name_len = 30):
+    """Print a combo"""
+    c_format = '{indent:>'+str(indent)+'}{cmc_total:>9} | {cmc_max:>7} | {cmc_min:>7} | '
+    c_format += ' + '.join(list(map(lambda i: '{name_'+str(i)+':^'+ str(max_name_len)+'}',
+                                    range(1, max_cards + 1))))
+    if print_header:
+        c_params = {
+            'indent': '',
+            'cmc_total': 'CMC total',
+            'cmc_max': 'CMC max',
+            'cmc_min': 'CMC min'}
+        for index in range(1, max_cards + 1):
+            c_params['name_'+str(index)] = 'card '+str(index)
+        c_header = c_format.format(**c_params)
+        print(c_header)
+    c_params = {
+        'indent': '',
+        'cmc_total': int(tup_combo[1]['cmc_total']),
+        'cmc_max': int(tup_combo[1]['cmc_max']),
+        'cmc_min': int(tup_combo[1]['cmc_min'])}
+    for index, name in enumerate(tup_combo[0]):
+        c_params['name_'+str(index + 1)] = truncate_text(name, max_name_len)
+    c_line = c_format.format(**c_params)
+    print(c_line)
+
+def get_card(name, cards, return_face = False):
+    """Find a card by its name in a list of cards objects
+       (if return_face use faces instead of cards)"""
+    for card in cards:
+        if card['name'] == name:
+            return card
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if face['name'] == name:
+                    if return_face:
+                        return face
+                    return card
+    return None
+
+def names_to_cards(names, cards, return_face = False):
+    """Return a card list from a list of card names (if return_face use faces instead of cards)"""
+    return list(map(lambda n: get_card(n, cards, return_face), names))
+
+def get_combos(combo_list, cards, name = None, only_ok = True, combo_res_regex = None,
+               max_cards = None):
+    """Return a dict containing:
+         -   key: a tuple of cards comboting together
+         - value: a dict with keys: 'infos' the combo infos, 'cards' the combo's cards
+
+       Parameters:
+           name             string   a card name to match combo against
+           only_ok          boolean  if 'True' ensure all combo's card belong to the given list
+           cards            list     the list of cards to search in
+           combo_res_regex  string   if not None add combo only if its Result matches this regex
+           max_cards        int      only consider combos with at most this number of cards
+    """
+    card_combos = {}
+    for combo_info in combo_list:
+        combo_card_names = []
+        add_combo = False
+        for num in range(1, 11):
+            if combo_info['Card '+str(num)]:
+                card_name = combo_info['Card '+str(num)].strip()
+                combo_card_names.append(card_name)
+                if not name or card_name == name:
+                    add_combo = True
+        if add_combo:
+            if max_cards and len(combo_card_names) > max_cards:
+                continue
+            if len(combo_card_names) <= 1:
+                # print('Warning: skipping following combo because it only has 1 card.',
+                #       combo_card_names)
+                continue
+            if name:
+                combo_card_names = (name, *(set(combo_card_names) - {name}))
+            combo_cards = names_to_cards(combo_card_names, cards, return_face = True)
+            combo_cards_not_found = any(map(lambda c: c is None, combo_cards))
+            if combo_cards_not_found:
+                if only_ok:
+                    continue
+                # print('Warning: skipping following combo because of card not found.',
+                #       combo_card_names)
+                continue
+            if combo_res_regex and not (combo_info['Results']
+                    and re.search(combo_res_regex, combo_info['Results'].lower())):
+                continue
+            card_combos[tuple(combo_card_names)] = {'infos': combo_info, 'cards': combo_cards}
+            analyse_combo(card_combos[tuple(combo_card_names)])
+    return card_combos
+
+def get_nx_graph(cards_relations):
+    """Return an nx.Graph instance build from the cards relations"""
+
+    nx_graph = nx.Graph()
+    card_ids = {}
+    card_id = 0
+    for name in cards_relations:
+        card_ids[name] = card_id
+        nx_graph.add_node(card_id, card=name)
+        card_id = card_id + 1
+
+    for name, relations in cards_relations.items():
+        card_id = card_ids[name]
+        for relation in relations:
+            target_id = card_ids[relation]
+            nx_graph.add_edge(card_id, target_id)
+
+    return nx_graph
+
+def k_core_cards(nx_graph, max_k = 20):
+    """Return a tuple:
+        * the k-core nodes matching the lowest k
+        * the k lowest number returning nodes
+        * the number of k-core nodes
+    """
+    prev_k = 0
+    prev_nodes = []
+    prev_nodes_len = 0
+    for k in range(1, max_k):
+        nodes = nx.k_core(nx_graph, k=k).nodes()
+        nodes_len = len(nodes)
+        if not nodes_len:
+            break
+        prev_k = k
+        prev_nodes = nodes
+        prev_nodes_len = nodes_len
+    return (prev_nodes, prev_k, prev_nodes_len)
+
+def export_gexf(cards_relations):
+    """Export to a gexf file the cards relations specified"""
+
+    date_text = datetime.utcnow().strftime('%Y-%m-%d+%H:%M')
+    xml_header =('<?xml version="1.0" encoding="UTF-8"?>'+"\n"
+                +'<gexf xmlns:viz="http:///www.gexf.net/1.1draft/viz" version="1.1" '+
+                    'xmlns="http://www.gexf.net/1.1draft">'+"\n"
+                +"\t"+'<meta lastmodifieddate="'+date_text+'">'+"\n"
+                +"\t"+"\t"+'<creator>MTG Deck Build by Michael Bideau</creator>'+"\n"
+                +"\t"+'</meta>'+"\n"
+                +"\t"+'<graph defaultedgetype="undirected" idtype="string" type="static">'+"\n"
+                +"\t"+"\t"+'<nodes count="'+str(len(cards_relations))+'">"'+"\n")
+    card_ids = {}
+    with open('/tmp/combo_cards.gexf', 'w', encoding='utf-8') as f_write:
+        f_write.write(xml_header)
+        card_id = 0.0
+        for name in cards_relations:
+            card_ids[name] = card_id
+            f_write.write("\t"+"\t"+"\t"+'<node id="'+str(card_id)+'" label="'+name+'"/>'+"\n")
+            card_id = card_id + 1
+        f_write.write("\t"+"\t"+'</nodes>'+"\n")
+        edge_id = 0
+        edges_lines = []
+        for name, relations in cards_relations.items():
+            card_id = card_ids[name]
+            for relation in relations:
+                target_id = card_ids[relation]
+                edges_lines.append(
+                    "\t"+"\t"+"\t"+'<edge id="'+str(edge_id)+'" source="'+str(card_id)+'" '+
+                    'target="'+str(target_id)+'"/>')
+                edge_id = edge_id + 1
+        edges_tag = "\t"+"\t"+'<edges count="'+str(len(edges_lines))+'">'+"\n"
+        f_write.write(edges_tag)
+        f_write.write("\n".join(edges_lines)+"\n")
+        f_write.write("\t"+"\t"+'</edges>'+"\n")
+        f_write.write("\t"+'</graph>'+"\n")
+        f_write.write('</gexf>')
+
+# def combo_replace_effects_by_cards(combos, cards_list):
+#     """Return a copy of combos dict with effects (value) replaced by the list of cards
+#        matching the card names (key)"""
+#
+#     new_combos = {}
+#     for names in combos.keys():
+#         new_combos[names] = names_to_cards(names, cards_list)
+#     return new_combos
+
+def analyse_combo(combo):
+    """Return a dict of a combo with added following attributes to its values:
+       cards_count: the number of cards in the combo
+           cmc_min: the CMC cost of the least expensive cards in the combo
+           cmc_max: the CMC cost of the most expensive cards in the combo
+         cmc_total: the combo with the total CMC cost specified
+
+        Arguments:
+            combos  dict   value={'infos': combos infos, 'cards': cards}
+    """
+    cmc_min = 99999999999999
+    cmc_max = 0
+    cmc_total = 0
+    for card_or_face in combo['cards']:
+        if 'cmc' in card_or_face:
+            cmc_min = min(cmc_min, card_or_face['cmc'])
+            cmc_max = max(cmc_max, card_or_face['cmc'])
+            cmc_total = cmc_total + float(card_or_face['cmc'])
+    combo['cards_count'] = len(combo['cards'])
+    combo['cmc_min'] = cmc_min if cmc_min != 99999999999999 else 0
+    combo['cmc_max'] = cmc_max
+    combo['cmc_total'] = cmc_total
+    return combo
+
 def main():
     """Main program"""
     global COMMANDER_COLOR_IDENTITY
@@ -1757,13 +2245,193 @@ def main():
         print('### Deck building ###')
         print('')
 
+        # combo
+        combo_list = []
+        with open("Commander Spellbook Database - combos.tsv", "r", encoding="utf8") as s_file:
+            f_reader = csv.DictReader(s_file, dialect='excel-tab')
+            combo_list = list(f_reader)
+        print('DEBUG', 'Combos database:', len(combo_list))
+        print('')
+
+        # rank 1
+        commander_combos = get_combos(combo_list, cards, name = COMMANDER_NAME, only_ok = False)
+        commander_combos_ok = get_combos(combo_list, cards_ok, name = COMMANDER_NAME)
+        commander_combos_filtered = get_combos(combo_list, cards_ok, name = COMMANDER_NAME,
+                                               combo_res_regex = COMMANDER_COMBOS_REGEX)
+
+        commander_combos_filtered_2_cards = {
+            k: v for k, v in commander_combos_filtered.items() if len(k) == 2}
+        commander_combos_filtered_3_cards = {
+            k: v for k, v in commander_combos_filtered.items() if len(k) == 3}
+        commander_combos_filtered_4_plus_cards = {
+            k: v for k, v in commander_combos_filtered.items() if len(k) > 3}
+
+        commander_combos_filtered_2_cards_order_cmc_total = list(sorted(
+            commander_combos_filtered_2_cards.items(), key=lambda t: t[1]['cmc_total']))
+        commander_combos_filtered_3_cards_order_cmc_total = list(sorted(
+            commander_combos_filtered_3_cards.items(), key=lambda t: t[1]['cmc_total']))
+        commander_combos_filtered_4_plus_cards_order_cmc_total = list(sorted(
+            commander_combos_filtered_4_plus_cards.items(), key=lambda t: t[1]['cmc_total']))
+
+        commander_combos_filtered_cards_names = set(filter(
+            lambda n: n != COMMANDER_NAME,
+            [name for names in commander_combos_filtered for name in names]))
+        commander_combos_filtered_2_cards_names = set(filter(
+            lambda n: n != COMMANDER_NAME,
+            [name for names in commander_combos_filtered_2_cards for name in names]))
+        commander_combos_filtered_3_cards_names = set(filter(
+            lambda n: n != COMMANDER_NAME,
+            [name for names in commander_combos_filtered_3_cards for name in names]))
+        commander_combos_filtered_4_plus_cards_names = set(filter(
+            lambda n: n != COMMANDER_NAME,
+            [name for names in commander_combos_filtered_4_plus_cards for name in names]))
+
+        print('Commander combos:', len(commander_combos))
+        print('')
+        print('Commander combos (OK):', len(commander_combos_ok))
+        print('')
+        print('Commander combos filtered '+COMMANDER_COMBOS_REGEX+':',
+              len(commander_combos_filtered))
+        print('')
+        print('    2 cards:', len(commander_combos_filtered_2_cards), ',',
+              '+'+str(len(commander_combos_filtered_2_cards_names)), 'cards')
+        print('')
+        for index, tup_combo in enumerate(commander_combos_filtered_2_cards_order_cmc_total):
+            print_tup_combo(tup_combo, indent = 8, max_cards = 2, print_header = index == 0)
+        print('')
+        print('    3 cards:', len(commander_combos_filtered_3_cards), ',',
+              '+'+str(len(commander_combos_filtered_3_cards_names)), 'cards')
+        print('')
+        for index, tup_combo in enumerate(commander_combos_filtered_3_cards_order_cmc_total):
+            print_tup_combo(tup_combo, indent = 8, max_cards = 3, print_header = index == 0)
+        print('')
+        print('   4+ cards:', len(commander_combos_filtered_4_plus_cards), ',',
+              '+'+str(len(commander_combos_filtered_4_plus_cards_names)), 'cards')
+        print('')
+        for index, tup_combo in enumerate(commander_combos_filtered_4_plus_cards_order_cmc_total):
+            print_tup_combo(tup_combo, indent = 8, max_cards = 4, print_header = index == 0)
+        print('')
+
+        # rank 2
+        print('')
+        commander_combos_cards = []
+        for card_names in commander_combos_filtered:
+            for card_name in card_names:
+                if card_name not in commander_combos_cards and card_name != COMMANDER_NAME:
+                    commander_combos_cards.append(card_name)
+        combos_rank_2 = {}
+        for card_name in commander_combos_cards:
+            print('Searching for combos related to', card_name, '...', flush=True)
+            card_combos = get_combos(combo_list, cards_ok, name = card_name,
+                                     combo_res_regex = COMMANDER_COMBOS_REGEX)
+            if card_combos:
+                for c_cards, c_info in card_combos.items():
+                    if c_cards not in commander_combos_filtered and c_cards not in combos_rank_2:
+                        combos_rank_2[c_cards] = c_info
+        print('')
+
+        combos_rank_2_2_cards = {k: v for k, v in combos_rank_2.items() if len(k) == 2}
+        combos_rank_2_3_cards = {k: v for k, v in combos_rank_2.items() if len(k) == 3}
+        combos_rank_2_4_plus_cards = {k: v for k, v in combos_rank_2.items() if len(k) > 3}
+
+        combos_rank_2_2_cards_order_cmc_total = list(sorted(combos_rank_2_2_cards.items(),
+                                                            key=lambda t: t[1]['cmc_total']))
+        combos_rank_2_3_cards_order_cmc_total = list(sorted(combos_rank_2_3_cards.items(),
+                                                            key=lambda t: t[1]['cmc_total']))
+
+        combos_rank_2_2_cards_names = set(filter(
+            lambda n: n != COMMANDER_NAME and n not in commander_combos_filtered_cards_names,
+            [name for names in combos_rank_2_2_cards for name in names]))
+        combos_rank_2_3_cards_names = set(filter(
+            lambda n: n != COMMANDER_NAME and n not in commander_combos_filtered_cards_names,
+            [name for names in combos_rank_2_3_cards for name in names]))
+
+        print('Commander combos rank 2:', len(combos_rank_2))
+        print('')
+        print('    2 cards:', len(combos_rank_2_2_cards), ',',
+              '+'+str(len(combos_rank_2_2_cards_names)), 'cards')
+        print('')
+        for index, tup_combo in enumerate(combos_rank_2_2_cards_order_cmc_total):
+            print_tup_combo(tup_combo, indent = 8, max_cards = 2, print_header = index == 0)
+        print('')
+        print('    3 cards:', len(combos_rank_2_3_cards), ',',
+              '+'+str(len(combos_rank_2_3_cards_names)), 'cards')
+        print('')
+        for index, tup_combo in enumerate(combos_rank_2_3_cards_order_cmc_total):
+            print_tup_combo(tup_combo, indent = 8, max_cards = 3, print_header = index == 0)
+        print('')
+        print('   4+ cards:', len(combos_rank_2_4_plus_cards))
+        print('')
+
+
+        print("Searching for all 2 cards combos with", COMMANDER_COMBOS_REGEX, "...", flush=True)
+        all_combos_2_cards = get_combos(combo_list, cards_ok, max_cards = 2,
+                                        combo_res_regex = COMMANDER_COMBOS_REGEX)
+        all_combos_2_cards_other = {k: v for k, v in all_combos_2_cards.items()
+                                    if k not in commander_combos_filtered and k not in combos_rank_2}
+
+        print('')
+        print('All other combos with only 2 cards:', len(all_combos_2_cards_other))
+        # all_combos_2_cards_other_order_cmc_total = list(sorted(
+        #     all_combos_2_cards_other.items(), key=lambda t: t[1]['cmc_total']))
+        # for index, tup_combo in enumerate(all_combos_2_cards_other_order_cmc_total):
+        #     print_tup_combo(tup_combo, indent = 8, max_cards = 2, print_header = index == 0)
+        # print('')
+
+        all_combos_2_cards_other_relations = {}
+        for combo_cards in all_combos_2_cards_other:
+            for name in combo_cards:
+                for other_name in combo_cards:
+                    if other_name != name:
+                        if name not in all_combos_2_cards_other_relations:
+                            all_combos_2_cards_other_relations[name] = []
+                        if other_name not in all_combos_2_cards_other_relations[name]:
+                            all_combos_2_cards_other_relations[name].append(other_name)
+
+        nx_graph = get_nx_graph(all_combos_2_cards_other_relations)
+        (k_nodes, k_num, k_len) = k_core_cards(nx_graph)
+        k_cards = list(map(lambda n: nx_graph.nodes[n]['card'], k_nodes))
+
+        k_combos = {}
+        for card_names, combo_infos in all_combos_2_cards_other.items():
+            add_combo = True
+            for name in card_names:
+                if name not in k_cards:
+                    add_combo = False
+                    break
+            if add_combo:
+                k_combos[card_names] = combo_infos
+
+        print('')
+        print('Combos cards involved:', len(all_combos_2_cards_other_relations))
+        print('')
+        print('NX Graph:', 'nodes:', nx_graph.number_of_nodes(), ',',
+              'edges:', nx_graph.number_of_edges())
+        print('')
+        if not k_nodes:
+            print('Warning: impossible to find a k-core')
+        else:
+            print('Combos '+str(k_num)+'-core cards:', k_len)
+            print('')
+            for node in k_nodes:
+                card_name = nx_graph.nodes[node]['card']
+                print_card(get_card(card_name, cards_ok))
+            print('')
+
+            print('Combos matching those cards: ', len(k_combos))
+            print('')
+            k_combos_order_cmc_max = list(sorted(k_combos.items(), key=lambda t: t[1]['cmc_max']))
+            for index, tup_combo in enumerate(k_combos_order_cmc_max):
+                print_tup_combo(tup_combo, indent = 3, max_cards = 2, print_header = index == 0)
+            print('')
+
         # one common keyword
         # TODO use a regex to also include cards that have no keywords but a text that could match
         #      the keywords
         cards_common_keyword = list(
             filter(lambda c: bool(commander_keywords & set(c['keywords'])), cards_ok))
-        new_total_cards = len(cards_common_keyword)
-        print('One common keyword', commander_keywords, ':', new_total_cards)
+        print('One common keyword', (commander_keywords if commander_keywords else ''), ':',
+              len(cards_common_keyword))
         print('')
         if COMMANDER_FEATURES_REGEXES:
             commander_common_feature = []
@@ -1861,11 +2529,6 @@ def main():
             [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
             land_types_invalid_regex)
 
-        # TODO select 7 removal cards (3 creatures, 4 artifacts/enchantments)
-        cards_removal = assist_removal_cards([
-            c for c in cards_ok if c not in cards_ramp_cards
-            and c not in cards_draw_cards and c not in cards_tutor_cards])
-
         # with open('tutor_cards.list.txt', 'r', encoding='utf-8') as f_tutor_read:
         #     print('')
         #     print('Tutor card missing')
@@ -1904,6 +2567,14 @@ def main():
         #                 break
         #         if found and not no_print and card:
         #             print_card(card, trunc_text = False)
+
+        # TODO select 7 removal cards (3 creatures, 4 artifacts/enchantments)
+        cards_removal = assist_removal_cards([
+            c for c in cards_ok if c not in cards_ramp_cards
+            and c not in cards_draw_cards and c not in cards_tutor_cards])
+
+        # best cards
+        cards_best = assist_best_cards(cards_ok)
 
         # TODO select 25 cards combos (starting with the commander and the selected cards)
         # WIP:
