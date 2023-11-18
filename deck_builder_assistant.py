@@ -1,15 +1,31 @@
 #!/usr/bin/env python3
+#
+# Copyright 2023 Michael Bideau, France <mica.devel@gmail.com>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, see <http://www.gnu.org/licenses/>.
 """
 Deck builder using the Scryfall JSON cards collection
 """
 
 # pylint: disable=line-too-long
+# pylint: disable=too-many-lines
 
 import os
 import sys
 import json
 import re
-import csv
+# import csv
 from argparse import ArgumentParser
 from urllib.request import urlopen,urlretrieve
 from pathlib import Path
@@ -17,9 +33,24 @@ from math import comb, prod
 from datetime import datetime
 from os.path import join as pjoin
 # import pprint
-import networkx as nx
-from sixel import sixel, converter, cellsize
-from termcolor import colored, cprint
+USE_NX = False
+USE_SIXEL = False
+try:
+    import networkx as nx
+    USE_NX = True
+except ImportError:
+    pass
+try:
+    from sixel import sixel, converter
+    USE_SIXEL = True
+except ImportError:
+    pass
+try:
+    from termcolor import colored
+except ImportError:
+    def colored(text, *pos, **kwargs):  # pylint: disable=unused-argument
+        """Fallback function"""
+        return text
 
 # user input
 # TODO extract those from the commander's card infos
@@ -1634,9 +1665,8 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
             line_visible_len += len(type_part + separator)
 
     name_fmt = '{:<'+('40' if not trunc_name else str(trunc_name))+'}'
-    name_part = name_fmt.format(truncate_text(card['name'], trunc_name),
-                                        get_card_colored(card))
-    name_part_colored = colored(name_part)
+    name_part = name_fmt.format(truncate_text(card['name'], trunc_name))
+    name_part_colored = colored(name_part, get_card_colored(card))
     line += name_part_colored + separator_colored
     line_visible_len += len(name_part + separator)
 
@@ -2590,6 +2620,68 @@ def get_card_colored(card):
             card_color_letter = 'M'
     return COLOR_NAME[card_color_letter]
 
+def assist_k_core_combos(combos, cards, regex, max_cards, excludes):
+    """Print k_core combos"""
+    print('DEBUG Searching for all', max_cards ,'cards combos with', regex, "...",
+          flush=True, file=sys.stderr)
+    new_combos = get_combos(combos, cards, max_cards = max_cards, combo_res_regex = regex,
+                            excludes = excludes)
+
+    print('')
+    print('All', max_cards, 'cards combos with', regex, ':', len(new_combos))
+    print('')
+
+    # TODO use a graph of combos:
+    #       - with weighted edges for percentage of shared cards
+    #       - or multiple graph one for combos that share 1 card, then for 2 cards, etc.
+    new_combos_relations = {}
+    for combo_cards in new_combos:
+        for name in combo_cards:
+            for other_name in combo_cards:
+                if other_name != name:
+                    if name not in new_combos_relations:
+                        new_combos_relations[name] = []
+                    if other_name not in new_combos_relations[name]:
+                        new_combos_relations[name].append(other_name)
+
+    print('Cards in those combos:', len(new_combos_relations))
+    print('')
+
+    nx_graph = get_nx_graph(new_combos_relations)
+    (k_nodes, k_num, k_len) = k_core_cards(nx_graph)
+    k_cards = tuple(sorted(list(map(lambda n: nx_graph.nodes[n]['card'], k_nodes))))
+
+    k_combos = {}
+    for card_names, combo_infos in new_combos.items():
+        add_combo = True
+        for name in card_names:
+            if name not in k_cards:
+                add_combo = False
+                break
+        if add_combo and card_names not in k_combos:
+            k_combos[card_names] = combo_infos
+
+    print('DEBUG NX Graph:', 'nodes:', nx_graph.number_of_nodes(), ',',
+            'edges:', nx_graph.number_of_edges(), file=sys.stderr)
+    if not k_nodes:
+        print('Warning: impossible to find a k-core', file=sys.stderr)
+    else:
+        print('All', max_cards, 'cards combos with', regex, str(k_num)+'-core cards:', k_len,
+              'cards')
+        print('')
+        for node in k_nodes:
+            card_name = nx_graph.nodes[node]['card']
+            print_card(get_card(card_name, cards))
+        print('')
+
+        print('All', max_cards, 'cards combos with', regex, str(k_num)+'-core combos:',
+              len(k_combos), 'combos')
+        print('')
+        k_combos_order_cmc_max = list(sorted(k_combos.items(), key=lambda t: t[1]['cmc_max']))
+        for index, tup_combo in enumerate(k_combos_order_cmc_max):
+            print_tup_combo(tup_combo, indent = 3, max_cards = max_cards, print_header = index == 0)
+        print('')
+
 def main():
     """Main program"""
     global COMMANDER_NAME
@@ -2646,7 +2738,7 @@ def main():
             sys.exit(1)
 
         # display image (if terminal is sixel compatible, see https://www.arewesixelyet.com)
-        if sys.stdout.isatty():  # in a terminal
+        if USE_SIXEL and sys.stdout.isatty():  # in a terminal
             imgpath, imgwidth, imgheight = get_card_image(commander_card, imgformat = 'normal')
             extraopts = {}
             if imgwidth is not None and imgheight is not None:
@@ -2782,7 +2874,7 @@ def main():
         combos_effects = []
         for combo in combos:
             if 'r' in combo and combo['r']:
-                for line in combo['r'].replace('. ', '\n').split('\n'):
+                for line in combo['r'].replace('. ', '\n').replace('..', '.').split('\n'):
                     line_striped = line.strip()
                     if line_striped and line_striped not in combos_effects:
                         combos_effects.append(line_striped)
@@ -2905,69 +2997,12 @@ def main():
         print('   4+ cards:', len(combos_rank_2_4_plus_cards), 'combos')
         print('')
 
-
-        print("DEBUG Searching for all 2 cards combos with", commander_combos_regex, "...",
-              flush=True, file=sys.stderr)
-        all_combos_2_cards_excludes = (list(commander_combos_filtered.keys())
-                                       + list(combos_rank_2.keys()))
-        all_combos_2_cards_other = get_combos(combos, cards_ok, max_cards = 2,
-                                              combo_res_regex = commander_combos_regex,
-                                              excludes = all_combos_2_cards_excludes)
-
-        print('')
-        print('All 2 cards combos with', commander_combos_regex, ':', len(all_combos_2_cards_other))
-        # all_combos_2_cards_other_order_cmc_total = list(sorted(
-        #     all_combos_2_cards_other.items(), key=lambda t: t[1]['cmc_total']))
-        # for index, tup_combo in enumerate(all_combos_2_cards_other_order_cmc_total):
-        #     print_tup_combo(tup_combo, indent = 8, max_cards = 2, print_header = index == 0)
-        # print('')
-
-        all_combos_2_cards_other_relations = {}
-        for combo_cards in all_combos_2_cards_other:
-            for name in combo_cards:
-                for other_name in combo_cards:
-                    if other_name != name:
-                        if name not in all_combos_2_cards_other_relations:
-                            all_combos_2_cards_other_relations[name] = []
-                        if other_name not in all_combos_2_cards_other_relations[name]:
-                            all_combos_2_cards_other_relations[name].append(other_name)
-
-        print('')
-        print('Cards in those combos:', len(all_combos_2_cards_other_relations))
-        print('')
-
-        nx_graph = get_nx_graph(all_combos_2_cards_other_relations)
-        (k_nodes, k_num, k_len) = k_core_cards(nx_graph)
-        k_cards = list(map(lambda n: nx_graph.nodes[n]['card'], k_nodes))
-
-        k_combos = {}
-        for card_names, combo_infos in all_combos_2_cards_other.items():
-            add_combo = True
-            for name in card_names:
-                if name not in k_cards:
-                    add_combo = False
-                    break
-            if add_combo:
-                k_combos[card_names] = combo_infos
-
-        print('DEBUG NX Graph:', 'nodes:', nx_graph.number_of_nodes(), ',',
-              'edges:', nx_graph.number_of_edges(), file=sys.stderr)
-        print('')
-        if not k_nodes:
-            print('Warning: impossible to find a k-core', file=sys.stderr)
-        else:
-            print('Combos '+str(k_num)+'-core cards:', k_len, 'cards')
+        if USE_NX:
+            cards_excludes = (list(commander_combos_filtered.keys())
+                                            + list(combos_rank_2.keys()))
+            assist_k_core_combos(combos, cards_ok, commander_combos_regex, 2, cards_excludes)
             print('')
-            for node in k_nodes:
-                card_name = nx_graph.nodes[node]['card']
-                print_card(get_card(card_name, cards_ok))
-            print('')
-
-            print('Combos matching those cards: ', len(k_combos), 'combos')
-            print('')
-            k_combos_order_cmc_max = list(sorted(k_combos.items(), key=lambda t: t[1]['cmc_max']))
-            for index, tup_combo in enumerate(k_combos_order_cmc_max):
-                print_tup_combo(tup_combo, indent = 3, max_cards = 2, print_header = index == 0)
+            assist_k_core_combos(combos, cards_ok, commander_combos_regex, 3, cards_excludes)
             print('')
 
         # one common keyword
