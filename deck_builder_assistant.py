@@ -20,6 +20,29 @@ import networkx as nx
 from sixel import sixel, converter, cellsize
 from termcolor import colored, cprint
 
+# user input
+COMMANDER_NAME = 'Queza, Augur of Agonies'
+
+# TODO extract those from the commander's card infos
+COMMANDER_FEATURES_REGEXES = [
+#    r'(opponent|target player|owner).*(lose|have lost).*life',
+#    r'(you|target player|owner).*(gain|have gained).*life',
+#    r'(you|target player|owner).*(draw|have draw)',
+]
+COMMANDER_FEATURES_EXCLUDE_REGEX = r'('+('|'.join([
+    '[Ss]acrifice|[Ee]xile|[Tt]ransform|[Dd]iscard',
+#    '^\\s*((First strike|Flying|Skulk|Deathtouch)( \\([^)]+\\))?)?\\s*Lifelink \\([^)]+\\)\\s*$'
+]))+')'
+
+# Add a parameter to express if a 1-drop at turn 1 is important,
+# that will exclude land that are not usable at turn 1 or colorless at turn 1
+TURN_1_WANTS_1_DROP = False
+
+# Add a parameter to express if you expect to fill your graveyard pretty fast (mill),
+# that will include card that relies on other cards being in the graveyard
+FILL_GRAVEYARD_FAST = False
+
+# constants
 TERM_COLS, TERM_LINES = os.getenv('TERM_COLS', None), os.getenv('TERM_LINES', None)
 
 SCRYFALL_API_BULK_URL = 'https://api.scryfall.com/bulk-data'
@@ -50,9 +73,7 @@ COLOR_TO_LAND = {
     'W': 'Plains',
     'U': 'Island',
     'B': 'Swamp'}
-COMMANDER_NAME = 'Queza, Augur of Agonies'
 COMMANDER_KEYWORDS = []
-COMMANDER_COMBOS_REGEX = r'('+('|'.join(['draw', 'life', 'win']))+')'
 DRAW_CARDS_REGEX = [
     r'(when|whenever|instead) [^.]+ (,|you [^.]+ (and )?)draw (a card|your)',
     'put (that card|one pile) into your hand',
@@ -111,15 +132,6 @@ REMOVAL_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
     'when this spell card is put into a graveyard after resolving, exile it',
 ]))+')'
 
-COMMANDER_FEATURES_REGEXES = [
-#    r'(opponent|target player|owner).*(lose|have lost).*life',
-#    r'(you|target player|owner).*(gain|have gained).*life',
-#    r'(you|target player|owner).*(draw|have draw)',
-]
-COMMANDER_FEATURES_EXCLUDE_REGEX = r'('+('|'.join([
-    '[Ss]acrifice|[Ee]xile|[Tt]ransform|[Dd]iscard',
-#    '^\\s*((First strike|Flying|Skulk|Deathtouch)( \\([^)]+\\))?)?\\s*Lifelink \\([^)]+\\)\\s*$'
-]))+')'
 COMMANDER_COLOR_IDENTITY = set([])
 COMMANDER_COLOR_IDENTITY_COUNT = 0
 INVALID_COLORS = set([])
@@ -185,21 +197,33 @@ LAND_RECOMMENDED_BICOLORS = [
     ]
 
 # help to colorize abilities and keywords
+# see https://mtg.fandom.com/wiki/Keyword_action
+KEYWORDS_ACTIONS = [
+    # evergreen action
+    '[Aa]ctivate', '[Aa]ttach', '[Cc]ast', '[Cc]ounter', '[Cc]reate', '[Dd]estroy', '[Dd]iscard',
+    '[Ee]xchange', '[Ee]xile', '[Ff]ight', '[Mm]ill', '[Pp]lay', '[Rr]eveal', '[Ss]acrifice',
+    '[Ss]cry', '[Ss]earch', '[Ss]huffle', '[Tt]ap', '[Uu]ntap',
+    # former evergreen action
+    '[Aa]nte', '[Bb]ury', '[Rr]egenerate',
+    # other
+    '[Dd]ouble', '[Ff]ateseal', '[Cc]lash', '[Pp]laneswalk', '[Ss]et [Ii]n [Mm]otion', '[Aa]bandon',
+    '[Pp]roliferate', '[Tt]ransform', '[Dd]etain', '[Pp]opulate', '[Mm]onstrosity', '[Vv]ote',
+    '[Bb]olster', '[Mm]anifest', '[Ss]upport', '[Ii]nvestigate', '[Mm]eld', '[Gg]oad', '[Ee]xert',
+    '[Ee]xplore', '[Aa]ssemble', '[Ss]urveil', '[Aa]dapt', '[Aa]mass', '[Ll]earn',
+    '[Vv]enture [Ii]nto [Tt]he [Dd]ungeon', '[Cc]onnive', '[Oo]pen [Aa]n [Aa]ttraction',
+    '[Rr]oll [Tt]o [Vv]isit [Yy]our [Aa]ttractions', '[Cc]onvert', '[Ii]ncubate',
+    '[Tt]he [Rr]ing [Tt]empts [Yy]ou', '[Ff]ace [Aa] [Vv]illainous [Cc]hoice', '[Tt]ime [Tt]ravel',
+    '[Dd]iscover']
+ACTIONS_REGEX_PART = '('+('|'.join(KEYWORDS_ACTIONS))+')'
 # see https://mtg.fandom.com/wiki/Keyword_ability
 # see https://mtg.fandom.com/wiki/Evergreen
 # see https://mtg.fandom.com/wiki/Deciduous
-ABILITIES_REGEX_PART = '('+('|'.join([
-    ## evergreen action
-    #'[Aa]ctivate', '[Aa]ttach', '[Cc]ast', '[Cc]ounter', '[Cc]reate', '[Dd]estroy', '[Dd]iscard',
-    #'[Ee]xchange', '[Ee]xile', '[Ff]ight', '[Mm]ill', '[Pp]lay', '[Rr]eveal', '[Ss]acrifice',
-    #'[Ss]cry', '[Ss]earch', '[Ss]huffle', '[Tt]ap', '[Uu]ntap',
+KEYWORDS_ABILITIES = [
     # evergreen abilities
     '[Dd]eathtouch', '[Dd]efender', '[Dd]ouble [Ss]trike', '[Ee]nchant', '[Ee]quip',
     '[Ff]irst [Ss]trike', '[Ff]lash', '[Ff]lying', '[Hh]aste', '[Hh]exproof', '[Ii]ndestructible',
     '[Ll]ifelink', '[Mm]enace', '[Pp]rotection', '[Rr]each', '[Tt]rample', '[Vv]igilance',
     '[Ww]ard',
-    ## former evergreen action
-    #'[Aa]nte', '[Bb]ury', '[Rr]egenerate',
     # former evergreen abilities
     '[Bb]anding', '[Ff]ear', '[Ss]hroud', '[Ii]ntimidate', '[Ll]andwalk', '[Pp]rowess',
 	# deciduous
@@ -228,17 +252,37 @@ ABILITIES_REGEX_PART = '('+('|'.join([
     '[Bb]litz', '[Cc]asualty', '[Ee]nlist', '[Rr]ead [Aa]head', '[Rr]avenous', '[Ss]quad',
     '[Ss]pace [Ss]culptor', '[Vv]isit', '[Pp]rototype', '[Ll]iving [Mm]etal',
     '[Mm]ore [Tt]han [Mm]eets [Tt]he [Ee]ye', '[Ff]or Mirrodin!', '[Tt]oxic', '[Bb]ackup',
-    '[Bb]argain', '[Cc]raft',
-]))+')'
+    '[Bb]argain', '[Cc]raft']
+ABILITIES_REGEX_PART = '('+('|'.join(KEYWORDS_ABILITIES))+')'
+# see https://mtg.fandom.com/wiki/Ability_word
+ABILITY_WORDS = [
+    '[Aa[damant', '[Aa[ddendum', '[Aa[lliance', '[Bb[attalion', '[Bb[loodrush', '[Cc[elebration',
+    '[Cc[hannel', '[Cc[hroma', '[Cc[ohort', '[Cc[onstellation', '[Cc[onverge',
+    '[Cc[ouncil’s [Dd]ilemma', '[Cc[oven', '[Dd[elirium', '[Dd[escend 4', '[Dd[escend 8',
+    '[Dd[omain', '[Ee[minence', '[Ee[nrage', '[Ff[ateful [Hh]our', '[Ff[athomless [Dd]escent',
+    '[Ff[erocious', '[Ff[ormidable', '[Gg[randeur', '[Hh[ellbent', '[Hh[eroic', '[Ii[mprint',
+    '[Ii[nspired', '[Jj[oin [Ff]orces', '[Kk[inship', '[Ll[andfall', '[Ll[ieutenant',
+    '[Mm[agecraft', '[Mm[etalcraft', '[Mm[orbid', '[Pp[ack [Tt]actics', '[Pp[aradox', '[Pp[arley',
+    '[Rr[adiance', '[Rr[aid', '[Rr[ally', '[Rr[evolt', '[Ss[ecret [Cc]ouncil',
+    '[Ss[pell [Mm]astery', '[Ss[trive', '[Ss[weep', '[Tt[empting [Oo]ffer', '[Tt[hreshold',
+    '[Uu[ndergrowth', '[Aa[nd [Ww]ill [Oo]f [Tt]he [Cc]ouncil']
+ABILITIES_WORDS_REGEX_PART = '('+('|'.join(ABILITY_WORDS))+')'
 
+# see https://mtg.fandom.com/wiki/Mechanic
+MECHANICS = [
+    '[Dd]raw',
+    '[Ll]ife', # gain or loss or payment
+    '[Ww]in',  # the game
+]
+MECHANICS_REGEX_PART = '('+('|'.join(MECHANICS))+')'
 
-# Add a parameter to express if a 1-drop at turn 1 is important,
-# that will exclude land that are not usable at turn 1 or colorless at turn 1
-TURN_1_WANTS_1_DROP = False
+COMMANDER_FEATURES_REGEX = '('+('|'.join(KEYWORDS_ACTIONS + KEYWORDS_ACTIONS + ABILITY_WORDS +
+                                         MECHANICS))+')'
 
-# Add a parameter to express if you expect to fill your graveyard pretty fast (mill),
-# that will include card that relies on other cards being in the graveyard
-FILL_GRAVEYARD_FAST = False
+COLORIZE_KEYWORD_REGEX_PART = '('+('|'.join(KEYWORDS_ABILITIES + ABILITY_WORDS))+')'
+
+# see https://mtg.fandom.com/wiki/Category:Miscellaneous_mechanics
+# TODO: craft some regex to detect each
 
 # Card object example:
 #
@@ -2295,7 +2339,7 @@ def get_combos(combo_list, cards, name = None, only_ok = True, combo_res_regex =
            name             string   a card name to match combo against
            only_ok          boolean  if 'True' ensure all combo's card belong to the given list
            cards            list     the list of cards to search in
-           combo_res_regex  string   if not None add combo only if its Result matches this regex
+           combo_res_regex  string   if not None add combo only if its Results matches this regex
            max_cards        int      only consider combos with at most this number of cards
     """
     card_combos = {}
@@ -2466,7 +2510,7 @@ def colorize_ability(text, color = 'white', bold = False, dark = True):
                             r'\1'+colored(r'\2', color, **extraopts)+r'\4', colorized_text)
     # colorized_text = re.sub(r'(^|\n)(\w+( \d|\{\w\})?)( *\()',
     #                        r'\1'+colored(r'\2', color, **extraopts)+r'\4', colorized_text)
-    colorized_text = re.sub('('+ABILITIES_REGEX_PART+r'( \d)?)+( *)(\{|\(|\.|,|$|\n)',
+    colorized_text = re.sub('('+COLORIZE_KEYWORD_REGEX_PART+r'( \d)?)+( *)(\{|\(|\.|,|$|\n)',
                             colored(r'\1', color, **extraopts)+r'\4\5', colorized_text)
     return colorized_text
 
@@ -2570,6 +2614,15 @@ def main():
             commander_keywords = COMMANDER_KEYWORDS
         commander_keywords = set(commander_keywords)
         commander_text = commander_card['oracle_text']
+        commander_combos_features = []
+        commander_features_match = re.finditer(COMMANDER_FEATURES_REGEX, commander_text)
+        # print('DEBUG', 'commander_features_match', commander_features_match, file=sys.stderr)
+        for match in commander_features_match:
+            # print('DEBUG', 'commander_features match', match, file=sys.stderr)
+            ability = match[0].lower()
+            if ability and ability not in commander_combos_features:
+                commander_combos_features.append(ability)
+        commander_combos_regex = '(win|'+('|'.join(commander_combos_features))+')'
 
         commander_color_name = get_card_colored(commander_card)
 
@@ -2582,6 +2635,7 @@ def main():
         print('     Type:', colored(commander_type, commander_color_name))
         print(' Keywords:', commander_card['keywords'], '+', COMMANDER_KEYWORDS)
         print('     Text:', commander_text)
+        print('Combo exp:', commander_combos_regex)
 
         print('')
         print('')
@@ -2653,11 +2707,23 @@ def main():
         print('DEBUG', 'Combos database:', len(combo_list))
         print('')
 
+        combos_effects = []
+        for infos in combo_list:
+            if 'Results' in infos and infos['Results']:
+                for line in infos['Results'].replace('. ', '\n').split('\n'):
+                    line_striped = line.strip()
+                    if line_striped and line_striped not in combos_effects:
+                        combos_effects.append(line_striped)
+        print('Combos effects:', len(combos_effects))
+        print('')
+        # for effect in combos_effects:
+        #     print('   ', effect)
+
         # rank 1
         commander_combos = get_combos(combo_list, cards, name = COMMANDER_NAME, only_ok = False)
         commander_combos_ok = get_combos(combo_list, cards_ok, name = COMMANDER_NAME)
         commander_combos_filtered = get_combos(combo_list, cards_ok, name = COMMANDER_NAME,
-                                               combo_res_regex = COMMANDER_COMBOS_REGEX)
+                                               combo_res_regex = commander_combos_regex)
 
         commander_combos_filtered_2_cards = {
             k: v for k, v in commander_combos_filtered.items() if len(k) == 2}
@@ -2690,7 +2756,7 @@ def main():
         print('')
         print('Commander combos (OK):', len(commander_combos_ok))
         print('')
-        print('Commander combos filtered '+COMMANDER_COMBOS_REGEX+':',
+        print('Commander combos filtered '+commander_combos_regex+':',
               len(commander_combos_filtered))
         print('')
         print('    2 cards:', len(commander_combos_filtered_2_cards), ',',
@@ -2723,7 +2789,7 @@ def main():
         for card_name in commander_combos_cards:
             print('Searching for combos related to', card_name, '...', flush=True)
             card_combos = get_combos(combo_list, cards_ok, name = card_name,
-                                     combo_res_regex = COMMANDER_COMBOS_REGEX)
+                                     combo_res_regex = commander_combos_regex)
             if card_combos:
                 for c_cards, c_info in card_combos.items():
                     if c_cards not in commander_combos_filtered and c_cards not in combos_rank_2:
@@ -2764,9 +2830,9 @@ def main():
         print('')
 
 
-        print("Searching for all 2 cards combos with", COMMANDER_COMBOS_REGEX, "...", flush=True)
+        print("Searching for all 2 cards combos with", commander_combos_regex, "...", flush=True)
         all_combos_2_cards = get_combos(combo_list, cards_ok, max_cards = 2,
-                                        combo_res_regex = COMMANDER_COMBOS_REGEX)
+                                        combo_res_regex = commander_combos_regex)
         all_combos_2_cards_other = {k: v for k, v in all_combos_2_cards.items()
                                     if k not in commander_combos_filtered and k not in combos_rank_2}
 
