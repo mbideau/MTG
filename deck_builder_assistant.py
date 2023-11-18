@@ -22,6 +22,8 @@ from termcolor import colored, cprint
 
 TERM_COLS, TERM_LINES = os.getenv('TERM_COLS', None), os.getenv('TERM_LINES', None)
 
+SCRYFALL_API_BULK_URL = 'https://api.scryfall.com/bulk-data'
+
 XMAGE_COMMANDER_BANNED_LIST_URL = 'https://github.com/magefree/mage/raw/master/Mage.Server.Plugins/Mage.Deck.Constructed/src/mage/deck/Commander.java'
 XMAGE_DUELCOMMANDER_BANNED_LIST_URL = 'https://github.com/magefree/mage/raw/master/Mage.Server.Plugins/Mage.Deck.Constructed/src/mage/deck/DuelCommander.java'
 XMAGE_BANNED_LINE_REGEX = r'^\s*banned(Commander)?\.add\("(?P<name>[^"]+)"\);\s*$'
@@ -458,6 +460,136 @@ def get_sources_requirements(item):
             return 26
     raise Exception("Not implemented")
 
+def get_scryfall_bulk_data(outdir = '/tmp', update = False):
+    """Download Scryfull bulk data informations.
+
+       Scryfall recommends to not download it more than once a week, so the filename
+       after downloading it to disk would contain the week number in order to prevent
+       other downloads the same week.
+
+       Options:
+
+       outdir      string   The directory where the image is going to be downloaded
+       update       bool    If 'True' force updating the image on local store
+    """
+
+    date_text = datetime.utcnow().strftime('%Y-%W')
+    bulk_data_file_name = 'scryfall-bulk-data-'+date_text+'.json'
+    bulk_data_file_path = pjoin(outdir, bulk_data_file_name)
+    bulk_data_file_ref = Path(bulk_data_file_path)
+
+    if not bulk_data_file_ref.is_file() or update:
+
+        print("DEBUG Getting Scryfall bulk data from '"+SCRYFALL_API_BULK_URL+"' ...",
+            file=sys.stderr)
+        with urlopen(SCRYFALL_API_BULK_URL) as r_json:
+            bulk_data = json.load(r_json)
+
+        if 'object' not in bulk_data or bulk_data['object'] != 'list':
+            print('Error: the Scryfall bulk-data information is not valid.'
+                    "Key 'object' is not in the data or with an invalid value.",
+                    file=sys.stderr)
+            sys.exit(1)
+
+        if 'data' not in bulk_data or not bulk_data['data']:
+            print('Error: the Scryfall bulk-data information is not valid.'
+                    "Key 'data' is not in the data or with an invalid value.",
+                    file=sys.stderr)
+            sys.exit(1)
+
+        new_bulk_data = bulk_data
+        while 'has_more' in new_bulk_data and new_bulk_data['has_more']:
+
+            if 'next_page' not in new_bulk_data or not new_bulk_data['next_page']:
+                print('Error: the Scryfall bulk-data information is not valid.'
+                        "Key 'next_page' is not in the data or with an invalid value.",
+                        file=sys.stderr)
+                sys.exit(1)
+
+            print("DEBUG Getting Scryfall next bulk data from '"+new_bulk_data['next_page']+"' ...",
+                file=sys.stderr)
+            with urlopen(new_bulk_data['next_page']) as r_json:
+                new_bulk_data = json.load(r_json)
+
+            if 'object' not in new_bulk_data or new_bulk_data['object'] != 'list':
+                print('Error: the Scryfall bulk-data information is not valid.'
+                        "Key 'object' is not in the data or with an invalid value.",
+                        file=sys.stderr)
+                sys.exit(1)
+
+            if 'data' not in new_bulk_data or not new_bulk_data['data']:
+                print('Error: the Scryfall bulk-data information is not valid.'
+                        "Key 'data' is not in the data or with an invalid value.",
+                        file=sys.stderr)
+                sys.exit(1)
+
+            for obj in new_bulk_data['data']:
+                bulk_data['data'].append(obj)
+
+        print("DEBUG Saving Scryfall bulk data to local file '"+bulk_data_file_path+"' ...",
+              file=sys.stderr)
+        with open(bulk_data_file_path, 'w', encoding="utf8") as f_write:
+            json.dump(bulk_data, f_write)
+
+    else:
+        # print("DEBUG Getting Scryfall bulk data from local file ...")
+        with open(bulk_data_file_path, 'r', encoding="utf8") as f_read:
+            bulk_data = json.load(f_read)
+
+    return bulk_data
+
+
+def get_scryfall_cards_db(bulk_data, outdir = '/tmp', update = False):
+    """Download Scryfull cards database as a JSON file.
+
+       Scryfall recommends to not download it more than once a week, so the filename
+       after downloading it to disk would contain the week number in order to prevent
+       other downloads the same week.
+
+       Options:
+
+       outdir      string   The directory where the image is going to be downloaded
+       update       bool    If 'True' force updating the image on local store
+    """
+
+    oracle_cards_src = []
+    for obj in bulk_data['data']:
+        if 'type' in obj and obj['type'] == 'oracle_cards':
+            if 'download_uri' not in obj or not obj['download_uri']:
+                print('Error: the Scryfall bulk-data information is not valid.'
+                        "Key 'download_uri' is not in the data or with an invalid value.",
+                        file=sys.stderr)
+                sys.exit(1)
+
+            # if 'updated_at' not in obj or not obj['updated_at']:
+            #     print('Error: the Scryfall bulk-data information is not valid.'
+            #             "Key 'updated_at' is not in the data or with an invalid value.",
+            #             file=sys.stderr)
+            #     sys.exit(1)
+
+            oracle_cards_src.append(obj)
+
+            if len(oracle_cards_src) > 1:
+                print('Error: the Scryfall bulk-data information is not valid.'
+                        "Too many 'oracle_cards' objects.", file=sys.stderr)
+                sys.exit(1)
+
+    if not oracle_cards_src:
+        print('Error: the Scryfall bulk-data information is not valid.'
+                "No 'oracle_cards' object found.", file=sys.stderr)
+        sys.exit(1)
+
+    date_text = datetime.utcnow().strftime('%Y-%W')
+    cards_json_file_name = 'scryfall-oracle-cards-'+date_text+'.json'
+    cards_json_file_path = pjoin(outdir, cards_json_file_name)
+    cards_json_file_ref = Path(cards_json_file_path)
+    oracle_cards_uri = oracle_cards_src[0]['download_uri']
+    if not cards_json_file_ref.is_file() or update:
+        print("DEBUG Getting Scryfall cards JSON database from '"+oracle_cards_uri+"' ...",
+              file=sys.stderr)
+        urlretrieve(oracle_cards_uri, cards_json_file_path)
+    return cards_json_file_path
+
 def get_xmage_commander_banned_list(include_duel = True, update = False):
     """Return a list of banned card for Commander format in XMage
 
@@ -469,7 +601,9 @@ def get_xmage_commander_banned_list(include_duel = True, update = False):
     commander_banned_file_path = Path(XMAGE_COMMANDER_BANNED_LIST_FILE)
     commander_banned_cards = []
     if not commander_banned_file_path.is_file() or update:
-        print("Getting Commander banned list from remote Xmage file ...")
+        print("DEBUG Getting XMage Commander banned list from '"+
+              XMAGE_COMMANDER_BANNED_LIST_FILE+"' ...",
+              file=sys.stderr)
         with open(XMAGE_COMMANDER_BANNED_LIST_FILE, 'w', encoding="utf8") as f_write:
             with urlopen(XMAGE_COMMANDER_BANNED_LIST_URL) as webpage:
                 for line in webpage:
@@ -479,14 +613,16 @@ def get_xmage_commander_banned_list(include_duel = True, update = False):
                         commander_banned_cards.append(card)
                         f_write.write(card+'\n')
     else:
-        print("Getting Commander banned list from local file ...")
+        # print("Getting Commander banned list from local file ...")
         with open(XMAGE_COMMANDER_BANNED_LIST_FILE, 'r', encoding="utf8") as f_read:
             commander_banned_cards = list(map(str.strip, list(f_read)))
 
     if include_duel:
         commanderduel_banned_file_path = Path(XMAGE_DUELCOMMANDER_BANNED_LIST_FILE)
         if not commanderduel_banned_file_path.is_file() or update:
-            print("Getting DuelCommander banned list from remote Xmage file ...")
+            print("DEBUG Getting Xmage DuelCommander banned list from '"+
+                  XMAGE_DUELCOMMANDER_BANNED_LIST_FILE+"' ...",
+                  file=sys.stderr)
             with open(XMAGE_DUELCOMMANDER_BANNED_LIST_FILE, 'w', encoding="utf8") as f_write:
                 with urlopen(XMAGE_DUELCOMMANDER_BANNED_LIST_URL) as webpage:
                     for line in webpage:
@@ -496,7 +632,9 @@ def get_xmage_commander_banned_list(include_duel = True, update = False):
                             commander_banned_cards.append(card)
                             f_write.write(card+'\n')
         else:
-            print("Getting DuelCommander banned list from local file ...")
+            # print("DEBUG Getting DuelCommander banned list from local file '"+
+            #       XMAGE_DUELCOMMANDER_BANNED_LIST_FILE+"' ...",
+            #       file=sys.stderr)
             with open(XMAGE_DUELCOMMANDER_BANNED_LIST_FILE, 'r', encoding="utf8") as f_read:
                 commander_banned_cards += list(map(str.strip, list(f_read)))
 
@@ -518,6 +656,7 @@ def get_card_image(card, imgformat = 'small', outdir = '/tmp', update = False):
     filepathinfo = Path(filepath)
     imgurl = card['image_uris'][imgformat]
     if not filepathinfo.is_file() or update:
+        print("DEBUG Getting Scryfall card's image from '"+imgurl+"' ...", file=sys.stderr)
         urlretrieve(imgurl, filepath)
     imgformats = {
         'png': (745, 1040),
@@ -2357,7 +2496,10 @@ def main():
 
     XMAGE_COMMANDER_CARDS_BANNED = get_xmage_commander_banned_list()
 
-    with open("oracle-cards-20231026090142.json", "r", encoding="utf8") as r_file:
+    scryfall_bulk_data = get_scryfall_bulk_data()
+    scryfall_cards_db_json_file = get_scryfall_cards_db(scryfall_bulk_data)
+
+    with open(scryfall_cards_db_json_file, "r", encoding="utf8") as r_file:
         cards = json.load(r_file)
 
         # TODO Add a parameter to exclude MTG sets by name or code
@@ -2393,6 +2535,8 @@ def main():
                 extraopts['h'] = imgheight
             # print('Image width:', imgwidth)
             # print('Term columns:', TERM_COLS)
+            sys.stdout.flush()
+            sys.stderr.flush()
             if TERM_COLS > 100:
                 img_writer = sixel.SixelWriter()
                 # img_writer.save_position(sys.stdout)
