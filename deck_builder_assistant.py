@@ -20,6 +20,7 @@ import networkx as nx
 from sixel import sixel, converter, cellsize
 from termcolor import colored, cprint
 
+TERM_COLS, TERM_LINES = os.getenv('TERM_COLS', None), os.getenv('TERM_LINES', None)
 
 XMAGE_COMMANDER_BANNED_LIST_URL = 'https://github.com/magefree/mage/raw/master/Mage.Server.Plugins/Mage.Deck.Constructed/src/mage/deck/Commander.java'
 XMAGE_DUELCOMMANDER_BANNED_LIST_URL = 'https://github.com/magefree/mage/raw/master/Mage.Server.Plugins/Mage.Deck.Constructed/src/mage/deck/DuelCommander.java'
@@ -718,19 +719,19 @@ def compute_invalid_colors():
     global INVALID_COLORS
     INVALID_COLORS = ALL_COLORS - COMMANDER_COLOR_IDENTITY
 
-def join_oracle_texts(card, truncate = False):
+def join_oracle_texts(card, truncate = False, colorize = True):
     """Return a string with card's oracle text joined"""
-
     texts = get_oracle_texts(card)
-    trunc_len = (int(truncate / 2) - 2) if int(truncate) > 4 and 'card_faces' in card else truncate
-    texts_truncated = list(map(lambda t: truncate_text(t, trunc_len), texts))
-    texts_colorized = list(map(colorize_ability, texts_truncated))
+    texts_truncated = texts
+    if truncate:
+        trunc_len = ((int(truncate / 2) - 2) if int(truncate) > 4 and 'card_faces' in card
+                     else truncate)
+        texts_truncated = list(map(lambda t: truncate_text(t, trunc_len), texts))
+    texts_colorized = texts_truncated
+    if colorize:
+        texts_colorized = list(map(colorize_ability, texts_truncated))
     texts_joined = ' // '.join(texts_colorized).replace('\n', '. ')
     return texts_joined
-    # return ' // '.join(list(map(
-    #     lambda c: colorize_ability(truncate_text(c, ((int(truncate / 2) - 2) if int(truncate) > 4
-    #                                                  and 'card_faces' in card else truncate))),
-    #     get_oracle_texts(card)))).replace('\n', '. ')
 
 def order_cards_by_cmc_and_name(cards_list):
     """Return an ordered cards list by CMC + Mana cost length as a decimal, and Name"""
@@ -1021,7 +1022,7 @@ def assist_land_selection(lands, land_types_invalid_regex):
     print('   Multicolors lands producers (not tapped, no sacrifice, no colorless mana):',
             len(cards_lands_multicolors_filtered))
     for card in cards_lands_multicolors_filtered:
-        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
     print('')
     print('   Multicolors lands producers (not tapped or untappable):',
             len(cards_lands_multicolors_producers_not_tapped))
@@ -1029,12 +1030,12 @@ def assist_land_selection(lands, land_types_invalid_regex):
     print('   Multicolors lands producers (not tapped or untappable, not selective):',
             len(cards_lands_multicolors_producers_not_tapped_not_selective))
     for card in cards_lands_multicolors_producers_not_tapped_not_selective:
-        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
     print('')
     print('   Multicolors lands producers (not tapped or untappable, selective):',
             len(cards_lands_multicolors_producers_not_tapped_selective))
     for card in cards_lands_multicolors_producers_not_tapped_selective:
-        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
     print('')
     print('   Multicolors lands producers (tapped):',
             len(cards_lands_multicolors_producers_tapped))
@@ -1042,7 +1043,7 @@ def assist_land_selection(lands, land_types_invalid_regex):
     print('   Multicolors lands producers (tapped, no color selection, no charge counter, no pay {1}):',
             len(cards_lands_multicolors_producers_tapped_filtered))
     for card in cards_lands_multicolors_producers_tapped_filtered:
-        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
     print('')
 
     print('Lands converters (total):', len(cards_lands_converters))
@@ -1053,12 +1054,12 @@ def assist_land_selection(lands, land_types_invalid_regex):
     print('   Lands converters colorless producers (not tapped or untappable):',
             len(cards_lands_converters_colorless_producers_not_tapped))
     for card in cards_lands_converters_colorless_producers_not_tapped:
-        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
     print('')
     print('   Lands converters colorless producers (tapped):',
             len(cards_lands_converters_colorless_producers_tapped))
     for card in cards_lands_converters_colorless_producers_tapped:
-        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
     print('')
 
     ### NOTE: I prefer artifacts for the job of converting mana,
@@ -1089,7 +1090,7 @@ def assist_land_selection(lands, land_types_invalid_regex):
     print('Bicolors lands (filtered, not tapped or untappable):',
             len(cards_lands_bicolors_filtered_not_tapped))
     for card in cards_lands_bicolors_filtered_not_tapped:
-        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
     print('')
     print('Bicolors lands (filtered, tapped):',
             len(cards_lands_bicolors_filtered_tapped))
@@ -1101,7 +1102,7 @@ def assist_land_selection(lands, land_types_invalid_regex):
     print('Sacrifice/Search lands (not tapped or untappable):',
             len(cards_lands_sacrifice_search_no_tapped))
     for card in cards_lands_sacrifice_search_no_tapped:
-        print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
     print('')
 
     # print('Lands producers of mana that are nonbasic:', len(cards_lands_producers_non_basic))
@@ -1123,7 +1124,7 @@ def assist_land_selection(lands, land_types_invalid_regex):
     # print('   Lands producers of mana that are nonbasic (no colorless, not tapped):',
     #        len(cards_lands_producers_non_basic_no_colorless_not_tapped))
     # for card in cards_lands_producers_non_basic_no_colorless_not_tapped:
-    #     print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+    #     print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
     # print('')
     # print('   Lands producers of mana that are nonbasic (no colorless, tapped):',
     #        len(cards_lands_producers_non_basic_no_colorless_tapped))
@@ -1131,7 +1132,7 @@ def assist_land_selection(lands, land_types_invalid_regex):
     # print('   Lands producers of mana that are nonbasic (colorless):',
     #         len(cards_lands_producers_non_basic_colorless))
     # for card in cards_lands_producers_non_basic_colorless:
-    #     print_card(card, trunc_name = 25, trunc_text = 150, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+    #     print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
     # print('')
     # print('')
 
@@ -1313,81 +1314,110 @@ def organize_by_type(cards):
     return orga
 
 def print_card(card, indent = 0, print_mana = True, print_type = True, print_powr_tough = True,
-               trunc_name = 25, trunc_type = 16, trunc_text = 115, trunc_mana = 10,
+               trunc_name = 25, trunc_type = 16, trunc_text = 'auto', trunc_mana = 10,
                merge_type_powr_tough = True, return_str = False, print_text = True,
                print_keywords = False, print_edhrank = True, print_price = True,
-               separator_color = 'dark_grey'):
+               separator_color = 'dark_grey', trunc_line = True):
     """Display a card or return a string representing it"""
     if merge_type_powr_tough and (not trunc_type or trunc_type > 10):
         trunc_type = 10  # default power/toughness length
     len_type = '16' if not trunc_type else str(trunc_type)
 
     line = ''
-    sep = colored(' | ', separator_color)
+    line_visible_len = 0
+    separator = ' | '
+    separator_colored = colored(separator, separator_color)
 
     indent_fmt = '{:<'+str(indent)+'}'
     indent_part = indent_fmt.format('')
     line += indent_part
+    line_visible_len += len(indent_part)
 
     if print_edhrank:
         edhrank_fmt = '# {:>5}'
         edhrank_part = edhrank_fmt.format(card['edhrec_rank'] if 'edhrec_rank' in card else '')
-        line += edhrank_part + sep
+        line += edhrank_part + separator_colored
+        line_visible_len += len(edhrank_part + separator)
 
     if print_price:
         price_fmt = '$ {:>5}'
         price_part = price_fmt.format(str(card['prices']['usd'])
                                       if 'prices' in card and 'usd' in card['prices']
                                       and card['prices']['usd'] else '')
-        line += price_part + sep
+        line += price_part + separator_colored
+        line_visible_len += len(price_part + separator)
 
     if print_mana:
         mana_fmt = '{:>'+('21' if not trunc_mana else str(trunc_mana))+'}'
-        mana_part = colorize_mana(mana_fmt.format(
+        mana_part = mana_fmt.format(
             truncate_text((' // '.join(get_mana_cost(card)) if print_mana else ''),
-                          trunc_mana)), no_braces = True)
-        line += mana_part + sep
+                          trunc_mana))
+        mana_part_colored = colorize_mana(mana_part, no_braces = True)
+        line += mana_part_colored + separator_colored
+        line_visible_len += len(mana_part + separator)
 
     if merge_type_powr_tough:
         if is_creature(card):
             powr_tough_fmt = '{:>'+len_type+'}'
             powr_tough_part = powr_tough_fmt.format(' // '.join(get_powr_tough(card)))
-            line += powr_tough_part + sep
+            line += powr_tough_part + separator_colored
+            line_visible_len += len(powr_tough_part + separator)
 
         else:
             type_fmt = '{:<'+len_type+'}'
             type_part = type_fmt.format(truncate_text((' // '.join(get_type_lines(card))),
                                                       trunc_type))
-            line += type_part + sep
+            line += type_part + separator_colored
+            line_visible_len += len(type_part + separator)
     else:
         if print_powr_tough:
             powr_tough_fmt = '{:>6}'
             powr_tough_part = powr_tough_fmt.format('')
             if is_creature(card):
                 powr_tough_part = powr_tough_fmt.format(' // '.join(get_powr_tough(card)))
-            line += powr_tough_part + sep
+            line += powr_tough_part + separator_colored
+            line_visible_len += len(powr_tough_part + separator)
 
         if print_type:
             type_fmt = '{:<'+len_type+'}'
             type_part = type_fmt.format(truncate_text((' // '.join(get_type_lines(card))),
                                                       trunc_type))
-            line += type_part + sep
+            line += type_part + separator_colored
+            line_visible_len += len(type_part + separator)
 
     name_fmt = '{:<'+('40' if not trunc_name else str(trunc_name))+'}'
-    name_part = colored(name_fmt.format(truncate_text(card['name'], trunc_name),
-                                        get_card_colored(card)))
-    line += name_part + sep
+    name_part = name_fmt.format(truncate_text(card['name'], trunc_name),
+                                        get_card_colored(card))
+    name_part_colored = colored(name_part)
+    line += name_part_colored + separator_colored
+    line_visible_len += len(name_part + separator)
 
     if print_keywords:
         keywords_fmt = '{}'
         keywords_part = keywords_fmt.format(' // '.join(list(map(lambda k: ', '.join(k),
                                                                  get_keywords(card)))))
-        line += keywords_part + (sep if print_text else '')
+        line += keywords_part + (separator_colored if print_text else '')
+        line_visible_len += len(keywords_part + (separator if print_text else ''))
 
     if print_text:
         text_fmt = '{}'
-        text_part = colorize_mana(text_fmt.format(join_oracle_texts(card, trunc_text)))
-        line += text_part
+        text_part_colored = text_fmt.format(join_oracle_texts(
+            card, (trunc_text if trunc_text != 'auto' else False)))
+
+        if trunc_text == 'auto' and TERM_COLS:
+            # Note: 2 is a margin, because joined lines have a dot and a space added (+1 char)
+            len_left = int(TERM_COLS) - 2 - line_visible_len
+            text_part_no_color = text_fmt.format(join_oracle_texts(
+                card, (trunc_text if trunc_text != 'auto' else False), colorize = False))
+            future_len = line_visible_len + len(text_part_no_color)
+            if future_len > int(TERM_COLS) - 2:
+                # TODO find a way to count for invisible chars
+                # Note: this is not perfect because some invisible char are already inside the text,
+                #       so the text will be shorter than expected
+                text_part_colored = text_part_colored[:len_left]+'…'+'\033[0m'
+
+        text_part_colored = colorize_mana(text_part_colored)
+        line += text_part_colored
 
     if not return_str:
         print(line)
@@ -2319,6 +2349,11 @@ def main():
     global COMMANDER_COLOR_IDENTITY
     global COMMANDER_COLOR_IDENTITY_COUNT
     global XMAGE_COMMANDER_CARDS_BANNED
+    global TERM_COLS
+    global TERM_LINES
+
+    if sys.stdout.isatty():  # in a terminal
+        TERM_COLS, TERM_LINES = os.get_terminal_size()
 
     XMAGE_COMMANDER_CARDS_BANNED = get_xmage_commander_banned_list()
 
@@ -2330,11 +2365,11 @@ def main():
         total_cards = len(cards)
         #print_all_cards_stats(cards, total_cards)
 
-        # for name in ['Vexing Sphinx', 'Mistwalker', 'Pixie Guide', 'Incisor Glider',
-        #              'War of the Last Alliance', 'Library of Lat-Nam', 'Wall of Shards',
-        #              'Time Beetle', "Mastermind's Acquisition", 'Dark Petition', 'Sky Skiff',
-        #              'Bloodvial Purveyor', 'Battlefield Raptor', 'Plumeveil', 'Sleep-Cursed Faerie',
-        #              'Path of Peril', 'Sadistic Sacrament']:
+        # for name in ['War of the Last Alliance', 'Wall of Shards', 'Vexing Sphinx', 'Mistwalker',
+        #              'Pixie Guide', 'Library of Lat-Nam', 'Time Beetle', "Mastermind's Acquisition",
+        #              'Dark Petition', 'Sky Skiff', 'Bloodvial Purveyor', 'Battlefield Raptor',
+        #              'Plumeveil', 'Sleep-Cursed Faerie', 'Path of Peril', 'Sadistic Sacrament',
+        #              'Incisor Glider',]:
         #     card = get_card(name, cards, strict = True)
         #     print_card(card, print_type = False)
         # sys.exit(0)
@@ -2356,14 +2391,13 @@ def main():
             if imgwidth is not None and imgheight is not None:
                 extraopts['w'] = imgwidth
                 extraopts['h'] = imgheight
-            term_cols, term_lines = os.get_terminal_size()
             # print('Image width:', imgwidth)
-            # print('Term columns:', term_cols)
-            if term_cols > 100:
+            # print('Term columns:', TERM_COLS)
+            if TERM_COLS > 100:
                 img_writer = sixel.SixelWriter()
                 # img_writer.save_position(sys.stdout)
                 # img_writer.move_y(1, False, sys.stdout)
-                cell_x = int(term_cols / 2) - 3
+                cell_x = int(TERM_COLS / 2) - 3
                 #img_writer.move_x(cell_x, True, sys.stdout)
                 extraopts['x'] = cell_x
                 extraopts['absolute'] = True
@@ -2820,4 +2854,7 @@ def main():
         # for each turn N present a list of possible N-drop cards
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except BrokenPipeError:
+        pass
