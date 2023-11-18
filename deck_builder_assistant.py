@@ -83,8 +83,21 @@ COLOR_NAME = {
     'M': 'yellow',
     'C': 'light_yellow',
     'X': 'light_yellow',
+    'Y': 'light_yellow',
+    'Z': 'light_yellow',
     'TK': 'light_yellow',
-    'T': 'magenta'}
+    'T': 'magenta',
+    'Q': 'magenta',
+    'E': 'cyan',
+    'PW': 'light_yellow',
+    'CHAOS': 'light_yellow',
+    'A': 'light_yellow',
+    '½': 'light_yellow',
+    '∞': 'light_yellow',
+    'P': 'light_yellow',
+    'HW': 'white',
+    'HR': 'red',
+    'S': 'light_yellow'}
 ALL_COLORS_COUNT = len(ALL_COLORS)
 COLOR_TO_LAND = {
     'G': 'Forest',
