@@ -10,6 +10,7 @@ import sys
 import json
 import re
 import csv
+from argparse import ArgumentParser
 from urllib.request import urlopen,urlretrieve
 from pathlib import Path
 from math import comb, prod
@@ -21,8 +22,6 @@ from sixel import sixel, converter, cellsize
 from termcolor import colored, cprint
 
 # user input
-COMMANDER_NAME = 'Queza, Augur of Agonies'
-
 # TODO extract those from the commander's card infos
 COMMANDER_FEATURES_REGEXES = [
 #    r'(opponent|target player|owner).*(lose|have lost).*life',
@@ -2593,11 +2592,23 @@ def get_card_colored(card):
 
 def main():
     """Main program"""
+    global COMMANDER_NAME
     global COMMANDER_COLOR_IDENTITY
     global COMMANDER_COLOR_IDENTITY_COUNT
     global XMAGE_COMMANDER_CARDS_BANNED
     global TERM_COLS
     global TERM_LINES
+
+    parser = ArgumentParser(
+        prog='MTG Deck Science',
+        description='Generate a deck base, and make suggestion for an existing deck',
+        epilog='Enjoy !')
+
+    parser.add_argument('commander_name')
+    parser.add_argument('deck_path', nargs='?', help='an existing deck')
+    args = parser.parse_args()
+
+    COMMANDER_NAME = args.commander_name
 
     if sys.stdout.isatty():  # in a terminal
         TERM_COLS, TERM_LINES = os.get_terminal_size()
