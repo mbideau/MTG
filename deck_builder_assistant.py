@@ -2709,7 +2709,7 @@ def main():
     global TERM_LINES
 
     parser = ArgumentParser(
-        prog='MTG Deck Science',
+        prog='deck_builder_assistant.py',
         description='Generate a deck base, and make suggestion for an existing deck',
         epilog='Enjoy !')
 
