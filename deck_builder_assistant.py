@@ -965,7 +965,7 @@ def print_all_cards_stats(cards, total_cards):
     new_total_cards = len(cards_with_keywords_or_text)
     print('Without keywords and text:', prev_total_cards - new_total_cards)
 
-def assist_land_selection(lands, land_types_invalid_regex):
+def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None):
     """Show pre-selected lands organised by features, for the user to select some"""
 
     # lands selection
@@ -1171,29 +1171,30 @@ def assist_land_selection(lands, land_types_invalid_regex):
     # print('')
     print('   Multicolors lands producers (not tapped, no sacrifice, no colorless mana):',
             len(cards_lands_multicolors_filtered))
-    for card in cards_lands_multicolors_filtered:
-        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+    print_cards_list(cards_lands_multicolors_filtered, limit = max_list_items, indent = 5,
+                     print_mana = False, print_type = False, print_powr_tough = False)
     print('')
     print('   Multicolors lands producers (not tapped or untappable):',
             len(cards_lands_multicolors_producers_not_tapped))
     print('')
     print('   Multicolors lands producers (not tapped or untappable, not selective):',
             len(cards_lands_multicolors_producers_not_tapped_not_selective))
-    for card in cards_lands_multicolors_producers_not_tapped_not_selective:
-        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+    print_cards_list(cards_lands_multicolors_producers_not_tapped_not_selective,
+                     limit = max_list_items, indent = 5, print_mana = False, print_type = False,
+                     print_powr_tough = False)
     print('')
     print('   Multicolors lands producers (not tapped or untappable, selective):',
             len(cards_lands_multicolors_producers_not_tapped_selective))
-    for card in cards_lands_multicolors_producers_not_tapped_selective:
-        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+    print_cards_list(cards_lands_multicolors_producers_not_tapped_selective, limit = max_list_items,
+                     indent = 5, print_mana = False, print_type = False, print_powr_tough = False)
     print('')
     print('   Multicolors lands producers (tapped):',
             len(cards_lands_multicolors_producers_tapped))
     print('')
     print('   Multicolors lands producers (tapped, no color selection, no charge counter, no pay {1}):',
             len(cards_lands_multicolors_producers_tapped_filtered))
-    for card in cards_lands_multicolors_producers_tapped_filtered:
-        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+    print_cards_list(cards_lands_multicolors_producers_tapped_filtered, limit = max_list_items,
+                     indent = 5, print_mana = False, print_type = False, print_powr_tough = False)
     print('')
 
     print('Lands converters (total):', len(cards_lands_converters))
@@ -1203,13 +1204,13 @@ def assist_land_selection(lands, land_types_invalid_regex):
     print('')
     print('   Lands converters colorless producers (not tapped or untappable):',
             len(cards_lands_converters_colorless_producers_not_tapped))
-    for card in cards_lands_converters_colorless_producers_not_tapped:
-        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+    print_cards_list(cards_lands_converters_colorless_producers_not_tapped, limit = max_list_items,
+                     indent = 5, print_mana = False, print_type = False, print_powr_tough = False)
     print('')
     print('   Lands converters colorless producers (tapped):',
             len(cards_lands_converters_colorless_producers_tapped))
-    for card in cards_lands_converters_colorless_producers_tapped:
-        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+    print_cards_list(cards_lands_converters_colorless_producers_tapped, limit = max_list_items,
+                     indent = 5, print_mana = False, print_type = False, print_powr_tough = False)
     print('')
 
     ### NOTE: I prefer artifacts for the job of converting mana,
@@ -1239,8 +1240,8 @@ def assist_land_selection(lands, land_types_invalid_regex):
     print('')
     print('Bicolors lands (filtered, not tapped or untappable):',
             len(cards_lands_bicolors_filtered_not_tapped))
-    for card in cards_lands_bicolors_filtered_not_tapped:
-        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+    print_cards_list(cards_lands_bicolors_filtered_not_tapped, limit = max_list_items, indent = 5,
+                     print_mana = False, print_type = False, print_powr_tough = False)
     print('')
     print('Bicolors lands (filtered, tapped):',
             len(cards_lands_bicolors_filtered_tapped))
@@ -1251,8 +1252,8 @@ def assist_land_selection(lands, land_types_invalid_regex):
     print('Sacrifice/Search lands:', len(cards_lands_sacrifice_search))
     print('Sacrifice/Search lands (not tapped or untappable):',
             len(cards_lands_sacrifice_search_no_tapped))
-    for card in cards_lands_sacrifice_search_no_tapped:
-        print_card(card, trunc_name = 25, print_mana = False, print_type = False, print_powr_tough = False, indent = 5)
+    print_cards_list(cards_lands_sacrifice_search_no_tapped, limit = max_list_items, indent = 5,
+                     print_mana = False, print_type = False, print_powr_tough = False)
     print('')
 
     # print('Lands producers of mana that are nonbasic:', len(cards_lands_producers_non_basic))
@@ -1292,7 +1293,7 @@ def assist_land_selection(lands, land_types_invalid_regex):
     #      - 2 land for each 5 draw cards
 
 
-def assist_land_fetch(cards, land_types_invalid_regex, limit_list_to = 30):
+def assist_land_fetch(cards, land_types_invalid_regex, max_list_items = None):
     """Show pre-selected land fetchers organised by features, for the user to select some"""
 
     cards_ramp_cards_land_fetch = []
@@ -1372,7 +1373,7 @@ def assist_land_fetch(cards, land_types_invalid_regex, limit_list_to = 30):
                 if sub_cards_list:
                     print('      '+extra_text+'Land fetch '+feature+' ('+card_type+'):',
                           len(sub_cards_list))
-                    list_count = 0
+                    item_count = 0
                     for card in sub_cards_list:
                         if card_type == 'unknown':
                             print_card(card, print_powr_tough = False, indent = 8,
@@ -1381,30 +1382,20 @@ def assist_land_fetch(cards, land_types_invalid_regex, limit_list_to = 30):
                             print_card(card, print_powr_tough = (card_type == 'creature'),
                                        print_type = False, indent = 8,
                                        print_mana = (card_type not in ['land','stickers']))
-                        list_count += 1
-                        if list_count > limit_list_to:
+                        item_count += 1
+                        if max_list_items and item_count > max_list_items:
                             print('{:>8}...'.format(''))
                             break
                     print('')
             if land_cycling:
                 print('      Land fetch '+feature+' (land cycling):', len(land_cycling))
-                list_count = 0
-                for card in order_cards_by_cmc_and_name(land_cycling):
-                    print_card(card, indent = 8)
-                    list_count += 1
-                    if list_count > limit_list_to:
-                        print('{:>8}...'.format(''))
-                        break
+                print_cards_list(order_cards_by_cmc_and_name(land_cycling),
+                                 limit = max_list_items, indent = 8)
                 print('')
             if channel:
                 print('      Land fetch '+feature+' (channel):', len(channel))
-                list_count = 0
-                for card in order_cards_by_cmc_and_name(channel):
-                    print_card(card, indent = 8)
-                    list_count += 1
-                    if list_count > limit_list_to:
-                        print('{:>8}...'.format(''))
-                        break
+                print_cards_list(order_cards_by_cmc_and_name(channel),
+                                 limit = max_list_items, indent = 8)
                 print('')
             print('')
 
@@ -1597,7 +1588,7 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
 
     return line
 
-def assist_ramp_cards(cards, land_types_invalid_regex, limit_list_to = 30):
+def assist_ramp_cards(cards, land_types_invalid_regex, max_list_items = None):
     """Show pre-selected ramp cards organised by features, for the user to select some"""
 
     cards_ramp_cards = []
@@ -1615,18 +1606,13 @@ def assist_ramp_cards(cards, land_types_invalid_regex, limit_list_to = 30):
                 cards_ramp_cards.append(card)
     cards_ramp_cards = list(sorted(cards_ramp_cards, key=lambda c: c['cmc']))
     print('Ramp cards:', len(cards_ramp_cards))
-    list_count = 0
-    for card in cards_ramp_cards:
-        print_card(card, indent = 3)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>3}...'.format(''))
-            break
+    print('')
+    print_cards_list(cards_ramp_cards, limit = max_list_items, indent = 3)
     print('')
 
     return cards_ramp_cards
 
-def assist_draw_cards(cards, land_types_invalid_regex, limit_list_to = 30):
+def assist_draw_cards(cards, land_types_invalid_regex, max_list_items = None):
     """Show pre-selected draw cards organised by features, for the user to select some"""
 
     cards_draw_cards = []
@@ -1674,54 +1660,34 @@ def assist_draw_cards(cards, land_types_invalid_regex, limit_list_to = 30):
 
     print('Draw cards (repeating):', len(cards_draw_cards_repeating))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_draw_cards_repeating):
-        print_card(card, indent = 3)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>3}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_draw_cards_repeating),
+                     limit = max_list_items, indent = 3)
     print('')
 
     print('Draw cards (multiple):',
           len(cards_draw_cards_multiple))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_draw_cards_multiple):
-        print_card(card, indent = 3)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>3}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_draw_cards_multiple),
+                     limit = max_list_items, indent = 3)
     print('')
 
     print('Draw cards (connives):',
           len(connives))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(connives):
-        print_card(card, indent = 3)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>3}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(connives),
+                     limit = max_list_items, indent = 3)
     print('')
 
     print('Draw cards (not repeating, CMC <= 3):',
           len(cards_draw_cards_not_repeating_cmc_3))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_draw_cards_not_repeating_cmc_3):
-        print_card(card, indent = 3)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>3}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_draw_cards_not_repeating_cmc_3),
+                     limit = max_list_items, indent = 3)
     print('')
 
     return cards_draw_cards
 
-def assist_tutor_cards(cards, land_types_invalid_regex, limit_list_to = 30):
+def assist_tutor_cards(cards, land_types_invalid_regex, max_list_items = None):
     """Show pre-selected tutor cards organised by features, for the user to select some"""
 
     cards_tutor_cards = []
@@ -1828,77 +1794,42 @@ def assist_tutor_cards(cards, land_types_invalid_regex, limit_list_to = 30):
     print('')
     print('      Tutor cards (not themed, to battlefield):', len(cards_tutor_cards_to_battlefield))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_tutor_cards_to_battlefield):
-        print_card(card, indent = 8)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>8}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_tutor_cards_to_battlefield),
+                     limit = max_list_items, indent = 8)
     print('')
     print('      Tutor cards (not themed, to hand):', len(cards_tutor_cards_to_hand))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_tutor_cards_to_hand):
-        print_card(card, indent = 8)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>8}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_tutor_cards_to_hand),
+                     limit = max_list_items, indent = 8)
     print('')
     print('      Tutor cards (not themed, to top of library):',
           len(cards_tutor_cards_to_top_library))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_tutor_cards_to_top_library):
-        print_card(card, indent = 8)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>8}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_tutor_cards_to_top_library),
+                     limit = max_list_items, indent = 8)
     print('')
     print('      Tutor cards (not themed, other):', len(cards_tutor_cards_other))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_tutor_cards_other):
-        print_card(card, indent = 8)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>8}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_tutor_cards_other),
+                     limit = max_list_items, indent = 8)
     print('')
 
     print('   Tutor cards (themed):', len(cards_tutor_cards_themed))
     print('')
     print('      Tutor cards (themed, against):', len(cards_tutor_cards_against))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_tutor_cards_against):
-        print_card(card, indent = 8)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>8}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_tutor_cards_against),
+                     limit = max_list_items, indent = 8)
     print('')
     print('      Tutor cards (themed, transmute):', len(cards_tutor_cards_transmute))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_tutor_cards_transmute):
-        print_card(card, indent = 8)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>8}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_tutor_cards_transmute),
+                     limit = max_list_items, indent = 8)
     print('')
     print('      Tutor cards (themed, artifact):', len(cards_tutor_cards_artifact))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_tutor_cards_artifact):
-        print_card(card, indent = 8)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>8}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_tutor_cards_artifact),
+                     limit = max_list_items, indent = 8)
     print('')
     print('      Tutor cards (themed, graveyard):', len(cards_tutor_cards_graveyard))
     print('')
@@ -1911,7 +1842,7 @@ def assist_tutor_cards(cards, land_types_invalid_regex, limit_list_to = 30):
 
     return cards_tutor_cards
 
-def assist_removal_cards(cards, limit_list_to = 30):
+def assist_removal_cards(cards, max_list_items = None):
     """Show pre-selected removal cards organised by features, for the user to select some"""
 
     cards_removal = []
@@ -2026,35 +1957,20 @@ def assist_removal_cards(cards, limit_list_to = 30):
     print('      Removal cards (CMC <= 3, destroy permanent):',
           len(cards_removal_cmc_3_destroy_permanent))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_permanent):
-        print_card(card, indent = 8)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>8}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_permanent),
+                     limit = max_list_items, indent = 8)
     print('')
     print('      Removal cards (CMC <= 3, destroy three choices):',
           len(cards_removal_cmc_3_destroy_three))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_three):
-        print_card(card, indent = 8)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>8}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_three),
+                     limit = max_list_items, indent = 8)
     print('')
     print('      Removal cards (CMC <= 3, destroy two choices):',
           len(cards_removal_cmc_3_destroy_two))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_two):
-        print_card(card, indent = 8)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>8}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_two),
+                     limit = max_list_items, indent = 8)
     print('')
     print('      Removal cards (CMC <= 3, destroy creature, sacrifice one):',
           len(cards_removal_cmc_3_destroy_creature)
@@ -2063,51 +1979,31 @@ def assist_removal_cards(cards, limit_list_to = 30):
     print('      Removal cards (CMC <= 3, destroy creature, no exclusion):',
           len(cards_removal_cmc_3_destroy_creature_no_exclusion))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_creature_no_exclusion):
-        print_card(card, indent = 8)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>8}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_creature_no_exclusion),
+                     limit = max_list_items, indent = 8)
     print('')
     print('      Removal cards (CMC <= 3, destroy creature, exclusion):',
           len(cards_removal_cmc_3_destroy_creature_exclusion))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_creature_exclusion):
-        print_card(card, indent = 8)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>8}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_creature_exclusion),
+                     limit = max_list_items, indent = 8)
     print('')
     print('      Removal cards (CMC <= 3, destroy enchantments):',
           len(cards_removal_cmc_3_destroy_enchantment))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_enchantment):
-        print_card(card, indent = 8)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>8}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_enchantment),
+                     limit = max_list_items, indent = 8)
     print('')
     print('      Removal cards (CMC <= 3, destroy other):',
           len(cards_removal_cmc_3_destroy_other))
     print('')
-    list_count = 0
-    for card in order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_other):
-        print_card(card, indent = 8)
-        list_count += 1
-        if list_count > limit_list_to:
-            print('{:>8}...'.format(''))
-            break
+    print_cards_list(order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_other),
+                     limit = max_list_items, indent = 8)
     print('')
 
     return cards_removal
 
-def assist_best_cards(cards):
+def assist_best_cards(cards, max_list_items = None):
     """Show pre-selected best cards organised by features, for the user to select some"""
 
     best_cards = []
@@ -2140,8 +2036,8 @@ def assist_best_cards(cards):
         if ratio <= min_ratio:
             break
         print('  ratio', ratio)
-        for card in order_cards_by_cmc_and_name(cards_list):
-            print_card(card, indent = 5)
+        print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                         indent = 5)
     print('')
 
     # Best creature toughness-to-cmc
@@ -2172,8 +2068,8 @@ def assist_best_cards(cards):
         if ratio <= min_ratio:
             break
         print('  ratio', ratio)
-        for card in order_cards_by_cmc_and_name(cards_list):
-            print_card(card, indent = 5)
+        print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                         indent = 5)
     print('')
 
     # Best 5 creature power and toughness to cmc
@@ -2208,8 +2104,8 @@ def assist_best_cards(cards):
         if ratio <= min_ratio:
             break
         print('  ratio', ratio)
-        for card in order_cards_by_cmc_and_name(cards_list):
-            print_card(card, indent = 5)
+        print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                         indent = 5)
     print('')
 
     # Best 5 creature amount of (evergreen?) keywords by cmc
@@ -2235,13 +2131,13 @@ def assist_best_cards(cards):
     keywords_to_cmc = dict(sorted(keywords_to_cmc.items(), reverse = True))
     print('Best keywords count to CMC ratio:')
     print('')
-    min_ratio = 2
+    min_ratio = 1
     for ratio, cards_list in keywords_to_cmc.items():
         if ratio <= min_ratio:
             break
         print('  ratio', ratio)
-        for card in order_cards_by_cmc_and_name(cards_list):
-            print_card(card, indent = 5, print_text = False, print_keywords = True)
+        print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                         indent = 5)
     print('')
 
     # Best ? creature with first|double strike and deathtouch (and flying?)
@@ -2260,8 +2156,8 @@ def assist_best_cards(cards):
                 deathtouch_strike.append(card)
     print('Best Deathtouch + First strike/Double strike:')
     print('')
-    for card in order_cards_by_cmc_and_name(deathtouch_strike):
-        print_card(card, indent = 5)
+    print_cards_list(order_cards_by_cmc_and_name(deathtouch_strike), limit = max_list_items,
+                     indent = 5)
     print('')
 
     # Best 5 creature with flying and deathtouch
@@ -2278,8 +2174,8 @@ def assist_best_cards(cards):
                 deathtouch_flying.append(card)
     print('Best Deathtouch + Flying:')
     print('')
-    for card in order_cards_by_cmc_and_name(deathtouch_flying):
-        print_card(card, indent = 5)
+    print_cards_list(order_cards_by_cmc_and_name(deathtouch_flying), limit = max_list_items,
+                     indent = 5)
     print('')
 
     # Best 5 creature with flying by power|toughness
@@ -2307,13 +2203,13 @@ def assist_best_cards(cards):
     flying_power_to_cmc = dict(sorted(flying_power_to_cmc.items(), reverse = True))
     print('Best Flying + Power to CMC ratio:')
     print('')
-    min_ratio = 1
+    min_ratio = 1.5
     for ratio, cards_list in flying_power_to_cmc.items():
         if ratio <= min_ratio:
             break
         print('  ratio', ratio)
-        for card in order_cards_by_cmc_and_name(cards_list):
-            print_card(card, indent = 5)
+        print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                         indent = 5)
     print('')
 
     flying_toughness_to_cmc = {}
@@ -2340,13 +2236,13 @@ def assist_best_cards(cards):
     flying_toughness_to_cmc = dict(sorted(flying_toughness_to_cmc.items(), reverse = True))
     print('Best Flying + toughness to CMC ratio:')
     print('')
-    min_ratio = 1
+    min_ratio = 1.5
     for ratio, cards_list in flying_toughness_to_cmc.items():
         if ratio <= min_ratio:
             break
         print('  ratio', ratio)
-        for card in order_cards_by_cmc_and_name(cards_list):
-            print_card(card, indent = 5)
+        print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                         indent = 5)
     print('')
 
     # TODO evasion cards (except flying)
@@ -2699,6 +2595,17 @@ def combo_effect_normalize(text):
     return (text.strip().lower().replace('near-infinite', 'infinite')
                                 .replace('card draw', 'draw').replace('draws', 'draw'))
 
+def print_cards_list(cards, limit = None, indent = 0, **kwargs):
+    """Loop over a cards list and print each cards, limit the list to 'limit' items"""
+    if cards:
+        item_count = 0
+        for card in cards:
+            item_count += 1
+            if limit and item_count > limit:
+                print(('{:>'+str(indent)+'}...').format(''))
+                break
+            print_card(card, indent = indent, **kwargs)
+
 def main():
     """Main program"""
     global COMMANDER_NAME
@@ -2719,6 +2626,8 @@ def main():
                         help='filter combos that match the specified combo effect (regex friendly)')
     parser.add_argument('-l', '--list-combos-effects', action='store_true',
                         help='list combos effects')
+    parser.add_argument('-m', '--max-list-items', type=int, default=10,
+                        help='limit listing to that number of items (default to 10)')
     args = parser.parse_args()
 
     COMMANDER_NAME = args.commander_name
@@ -3073,14 +2982,7 @@ def main():
         print('One common keyword', (commander_keywords if commander_keywords else ''), ':',
               len(cards_common_keyword))
         print('')
-        if cards_common_keyword:
-            list_count = 0
-            for card in cards_common_keyword:
-                list_count += 1
-                if list_count > 30:
-                    print('   ...')
-                    break
-                print_card(card, indent = 5)
+        print_cards_list(cards_common_keyword, limit = args.max_list_items, indent = 5)
 
         # TODO use a regex to also include cards that have no keywords but a text that could match
         #      the keywords
@@ -3124,21 +3026,22 @@ def main():
         print('Land types not matching commander:', land_types_invalid)
         print('')
         land_types_invalid_regex = r'('+('|'.join(land_types_invalid)).lower()+')'
-        assist_land_selection(lands, land_types_invalid_regex)
+        assist_land_selection(lands, land_types_invalid_regex, max_list_items = args.max_list_items)
 
         # TODO select 5 ramp cards that are land related (search or play)
-        cards_ramp_cards_land_fetch = assist_land_fetch(cards_ok, land_types_invalid_regex)
+        cards_ramp_cards_land_fetch = assist_land_fetch(cards_ok, land_types_invalid_regex,
+                                                        max_list_items = args.max_list_items)
 
         # TODO select 5 multicolor ramp cards (artifacts ?)
         # TODO select 5 colorless ramp cards (artifacts ?)
         cards_ramp_cards = assist_ramp_cards(
             [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
-            land_types_invalid_regex)
+            land_types_invalid_regex, max_list_items = args.max_list_items)
 
         # TODO select 10 draw cards
         cards_draw_cards = assist_draw_cards(
             [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
-            land_types_invalid_regex)
+            land_types_invalid_regex, max_list_items = args.max_list_items)
 
         # with open('draw_cards.list.txt', 'r', encoding='utf-8') as f_draw_read:
         #     print('')
@@ -3178,7 +3081,7 @@ def main():
         # TODO select 7 tutors
         cards_tutor_cards = assist_tutor_cards(
             [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
-            land_types_invalid_regex)
+            land_types_invalid_regex, max_list_items = args.max_list_items)
 
         # with open('tutor_cards.list.txt', 'r', encoding='utf-8') as f_tutor_read:
         #     print('')
@@ -3222,10 +3125,11 @@ def main():
         # TODO select 7 removal cards (3 creatures, 4 artifacts/enchantments)
         cards_removal = assist_removal_cards([
             c for c in cards_ok if c not in cards_ramp_cards
-            and c not in cards_draw_cards and c not in cards_tutor_cards])
+            and c not in cards_draw_cards and c not in cards_tutor_cards],
+                                             max_list_items = args.max_list_items)
 
         # best cards
-        cards_best = assist_best_cards(cards_ok)
+        cards_best = assist_best_cards(cards_ok, max_list_items = args.max_list_items)
 
         # TODO select 3 board wipe cards
 
