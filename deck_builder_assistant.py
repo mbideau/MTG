@@ -33,6 +33,7 @@ from pathlib import Path
 from math import comb, prod
 from datetime import datetime
 from os.path import join as pjoin
+from textwrap import wrap
 # import pprint
 USE_NX = False
 USE_SIXEL = False
@@ -212,30 +213,35 @@ LAND_BICOLORS_EXCLUDE_REGEX = r'('+('|'.join([
     'two or (more|fewer) other lands',
     'basic lands']))+')'
 LAND_SACRIFICE_SEARCH_REGEX = r'sacrifice.*search.*land'
-RAMP_CARDS_REGEX = r'('+('|'.join([
-    '(look for |search |play )[^.]+ land',
-    'adds? (an additional )?\\{[crgbuw0-9]\\}',
-    'adds? [^.]+ to your mana pool',
-    'adds? [^.]+ of any color',
-    'adds? \\w+ mana',
-    '(you may )?adds? an amount of \\{[crgbuw]\\} equal to',
-    'that player adds? \\w+ mana of any color they choose',
-    ('spells? (you cast )?(of the chosen type |that share a card type with the exiled card )?'+
-     'costs? (up to )?\\{\\d+\\} less to cast'),
-    'abilities (of creatures (you control )?)?costs? \\{\\d+\\} less to activate',
-    'adds? \\w+ additional mana',
-    'spells? (you cast)? have (convoke|improvise)',
-    'double the amount of [^.]+ mana you have',
-    ("(reveal|look at) the top card of your library.*if it's a land card, "+
-     "(then |you may )?put (it|that card) onto the battlefield"),
-    'look at the top \\w+ cards of your library\\. put \\w+ of them into your hand',
-    'reveal a card in your hand, then put that card onto the battlefield',
-    'for each \\{[crgbuw]\\} in a cost, you may pay \\d+ life rather than pay that mana',
-    'you may [^.]+ untap target [^.]+ land',
-    'put (a|up to \\w+) lands? cards? from your hand onto the battlefield',
-    'choose [^.]+ land.* untap all tapped permanents of that type that player controls',
-    "gain control of a land you don't control",
-]))+')'
+RAMP_CARDS_REGEX_BY_FEATURES = {
+    'land fetch': [
+        '(look for |search |play )[^.]+ land',
+        ("(reveal|look at) the top card of your library.*if it's a land card, "+
+        "(then |you may )?put (it|that card) onto the battlefield"),
+        'put (a|up to \\w+) lands? cards? from your hand onto the battlefield',
+        "gain control of a land you don't control"],
+    'mana': [
+        'adds? (an additional )?\\{[crgbuw0-9]\\}',
+        'adds? [^.]+ to your mana pool',
+        'adds? [^.]+ of any color',
+        'adds? \\w+ mana',
+        '(you may )?adds? an amount of \\{[crgbuw]\\} equal to',
+        'that player adds? \\w+ mana of any color they choose',
+        'adds? \\w+ additional mana',
+        'double the amount of [^.]+ mana you have'],
+    'cost reduction': [
+        ('spells? (you cast )?(of the chosen type |that share a card type with the exiled card )?'+
+        'costs? (up to )?\\{\\d+\\} less to cast'),
+        'abilities (of creatures (you control )?)?costs? \\{\\d+\\} less to activate',
+        'spells? (you cast)? have (convoke|improvise)'],
+    'draw': [
+        'look at the top \\w+ cards of your library\\. put \\w+ of them into your hand',
+        'reveal a card in your hand, then put that card onto the battlefield'],
+    'pay with life instead of mana': [
+        'for each \\{[crgbuw]\\} in a cost, you may pay \\d+ life rather than pay that mana'],
+    'untap land or permanent': [
+        'you may [^.]+ untap target [^.]+ land',
+        'choose [^.]+ land.* untap all tapped permanents of that type that player controls']}
 RAMP_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
     'defending player controls? [^.]+ land',
     'this spell costs \\{\\d+\\} less to cast',
@@ -1567,18 +1573,14 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
         text_part_colored = text_fmt.format(join_oracle_texts(
             card, (trunc_text if trunc_text != 'auto' else False)))
 
-        # TODO implements displaying the oracel_texts to multiple lines, indented
         if trunc_text == 'auto' and TERM_COLS:
             # Note: 2 is a margin, because joined lines have a dot and a space added (+1 char)
             len_left = int(TERM_COLS) - 2 - line_visible_len
-            text_part_no_color = text_fmt.format(join_oracle_texts(
-                card, (trunc_text if trunc_text != 'auto' else False), colorize = False))
-            future_len = line_visible_len + len(text_part_no_color)
-            if future_len > int(TERM_COLS) - 2:
-                # TODO find a way to count for invisible chars
-                # Note: this is not perfect because some invisible char are already inside the text,
-                #       so the text will be shorter than expected
-                text_part_colored = text_part_colored[:len_left]+'…'+'\033[0m'
+            # text_part_no_color = text_fmt.format(join_oracle_texts(
+            #     card, (trunc_text if trunc_text != 'auto' else False), colorize = False))
+            text_wrapped = wrap(text_part_colored, width = len_left, placeholder = '…')
+            text_part_colored = (
+                '⤵\n'+('{:>'+str(line_visible_len)+'}').format('')).join(text_wrapped)
 
         text_part_colored = colorize_mana(text_part_colored)
         line += text_part_colored
@@ -1592,23 +1594,33 @@ def assist_ramp_cards(cards, land_types_invalid_regex, max_list_items = None):
     """Show pre-selected ramp cards organised by features, for the user to select some"""
 
     cards_ramp_cards = []
+    cards_ramp_cards_by_features = {}
     for card in cards:
         if card['name'] not in ["Strata Scythe", "Trench Gorger"]:
             oracle_texts = list(get_oracle_texts(card))
             oracle_texts_low = list(map(str.lower, oracle_texts))
-            if (list(search_strings(RAMP_CARDS_REGEX, oracle_texts_low))
-                    and not list(search_strings(RAMP_CARDS_EXCLUDE_REGEX, oracle_texts_low))
+            if (not list(search_strings(RAMP_CARDS_EXCLUDE_REGEX, oracle_texts_low))
                     and not list(search_strings(land_types_invalid_regex, oracle_texts_low))
                     # and not list(search_strings(r'(you|target player|opponent).*discard',
                     #                             oracle_texts_low))
                     # and not list(in_strings('graveyard', oracle_texts_low))
                     and not filter_lands(card)):
-                cards_ramp_cards.append(card)
-    cards_ramp_cards = list(sorted(cards_ramp_cards, key=lambda c: c['cmc']))
+                for feature, regexes in RAMP_CARDS_REGEX_BY_FEATURES.items():
+                    regex = r'('+('|'.join(regexes))+')'
+                    if list(search_strings(regex, oracle_texts_low)):
+                        if feature not in cards_ramp_cards_by_features:
+                            cards_ramp_cards_by_features[feature] = []
+                        cards_ramp_cards_by_features[feature].append(card)
+                        cards_ramp_cards.append(card)
+
     print('Ramp cards:', len(cards_ramp_cards))
     print('')
-    print_cards_list(cards_ramp_cards, limit = max_list_items, indent = 3)
-    print('')
+    for feature, ramp_cards in cards_ramp_cards_by_features.items():
+        ramp_cards_sorted = order_cards_by_cmc_and_name(ramp_cards)
+        print('Ramp cards ('+feature+'):', len(ramp_cards_sorted))
+        print('')
+        print_cards_list(ramp_cards_sorted, limit = max_list_items, indent = 3)
+        print('')
 
     return cards_ramp_cards
 
