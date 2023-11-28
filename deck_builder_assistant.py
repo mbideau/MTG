@@ -32,6 +32,7 @@ from urllib.request import urlopen,urlretrieve
 from pathlib import Path
 from math import comb, prod
 from datetime import datetime
+from time import monotonic_ns, sleep
 from os.path import join as pjoin
 from textwrap import wrap
 # import pprint
@@ -53,6 +54,8 @@ except ImportError:
     def colored(text, *pos, **kwargs):  # pylint: disable=unused-argument
         """Fallback function"""
         return text
+
+SOURCE_URL = 'https://github.com/mbideau/MTG/blob/main/deck_builder_assistant.py'
 
 # user input
 # TODO extract those from the commander's card infos
@@ -79,6 +82,7 @@ FILL_GRAVEYARD_FAST = False
 TERM_COLS, TERM_LINES = os.getenv('TERM_COLS', None), os.getenv('TERM_LINES', None)
 
 SCRYFALL_API_BULK_URL = 'https://api.scryfall.com/bulk-data'
+LAST_SCRYFALL_CALL_TS_N = 0
 
 # see https://github.com/SpaceCowMedia/commander-spellbook-site/blob/main/scripts/download-data/get-google-sheets-data.ts
 # see https://github.com/SpaceCowMedia/commander-spellbook-site/blob/main/scripts/download-data/get-combo-changelog.ts
@@ -108,7 +112,7 @@ XMAGE_COMMANDER_CARDS_BANNED = []
 
 ALL_COLORS = set(['R', 'G', 'U', 'B', 'W'])
 COLOR_NAME = {
-    'B': 'dark_grey',
+    'B': 'dark_gray',
     'U': 'light_blue',
     'W': 'white',
     'G': 'light_green',
@@ -635,14 +639,22 @@ def get_card_image(card, imgformat = 'small', outdir = '/tmp', update = False):
        outdir      string   The directory where the image is going to be downloaded
        update       bool    If 'True' force updating the image on local store
     """
+    global LAST_SCRYFALL_CALL_TS_N
     filename = (re.sub(r'[^A-Za-z_-]', '', card['name'])+imgformat+
                 ('.jpg' if imgformat != 'png' else '.png'))
     filepath = pjoin(outdir, filename)
     filepathinfo = Path(filepath)
     imgurl = card['image_uris'][imgformat]
     if not filepathinfo.is_file() or update:
+        # delaying up to 200 millisecond like Scryfall API ask for fairness
+        now_ts_n = monotonic_ns()
+        while now_ts_n - LAST_SCRYFALL_CALL_TS_N < 200000:
+            print("DEBUG last scryfall call was less than 200 ms, sleeping 200 ms")
+            sleep(0.2) # sleep 200 milliseconds
+            now_ts_n = monotonic_ns()
         print("DEBUG Getting Scryfall card's image from '"+imgurl+"' ...", file=sys.stderr)
         urlretrieve(imgurl, filepath)
+        LAST_SCRYFALL_CALL_TS_N = monotonic_ns()
     imgformats = {
         'png': (745, 1040),
         'border_crop': (480, 680),
@@ -895,81 +907,134 @@ def order_cards_by_cmc_and_name(cards_list):
         str((c['cmc'] if 'cmc' in c else 0) + float('0.'+str(len(c['mana_cost']) if 'mana_cost' in c else '0')))
         +c['name'])))
 
-def print_all_cards_stats(cards, total_cards):
+def print_all_cards_stats(cards, outformat = 'console'):
     """Print statistics about all cards"""
 
-    print('')
-    print('### All Cards Stats ###')
-    print('')
-
-    print('Total cards:', total_cards)
-
-    # empty cards
-    prev_total_cards = total_cards
-    cards = list(filter(filter_empty, cards))
-    total_cards = len(cards)
-    print('Empty cards:', prev_total_cards - total_cards)
-    print('')
-
-    # commander legal
-    prev_total_cards = total_cards
-    cards_legal = list(filter(filter_not_legal_and_banned, cards))
-    new_total_cards = len(cards_legal)
-    print('Illegal or banned:', prev_total_cards - new_total_cards)
-    print('')
-
-    # xmage banned
-    prev_total_cards = total_cards
-    cards_not_banned = list(filter(filter_xmage_banned, cards))
-    new_total_cards = len(cards_not_banned)
-    print('XMage banned:', prev_total_cards - new_total_cards)
-    print('')
-
-    # mythic or special
-    prev_total_cards = total_cards
-    cards_below_mythic = list(filter(filter_mythic_and_special, cards))
-    new_total_cards = len(cards_below_mythic)
-    print('Mythic or special:', prev_total_cards - new_total_cards)
-    print('')
-
-    # max price
-    no_price_eur = len(list(filter(lambda c: not c['prices']['eur'], cards)))
-    no_price_usd = len(list(filter(lambda c: not c['prices']['usd'], cards)))
+    empty = list(filter(lambda c: not filter_empty(c), cards))
+    illegal = list(filter(lambda c: not filter_not_legal_and_banned(c), cards))
+    xmage_banned = list(filter(lambda c: not filter_xmage_banned(c), cards))
+    cards_mythic_or_special = list(filter(lambda c: not filter_mythic_and_special(c), cards))
+    without_price_eur = list(filter(lambda c: not c['prices']['eur'], cards))
+    without_price_usd = list(filter(lambda c: not c['prices']['usd'], cards))
     max_price_eur = max(map(lambda c: float(c['prices']['eur'] or 0), cards))
     max_price_usd = max(map(lambda c: float(c['prices']['usd'] or 0), cards))
-    print('No price EUR:', no_price_eur)
-    print('No price USD:', no_price_usd)
-    print('Price max EUR:', max_price_eur)
-    print('Price max USD:', max_price_usd)
-    print('')
+    price_below_100 = list(filter(filter_price, cards))
+    without_text = list(filter(lambda c: not filter_no_text(c), cards))
+    without_keywords = list(filter(lambda c: not filter_no_keywords(c), cards))
+    without_keywords_nor_text = list(
+        filter(lambda c: not filter_no_keywords(c) and not filter_no_text(c), cards))
 
-    # price above 100€ or 120$
-    prev_total_cards = total_cards
-    cards_price_ok = list(filter(filter_price, cards))
-    new_total_cards = len(cards_price_ok)
-    print('Price >100€ or >120$:', prev_total_cards - new_total_cards)
-    print('')
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <article>'+'\n'
+        html += '      <details>'+'\n'
+        html += '        <summary>Stats: all cards</summary>'+'\n'
+        html += '        <dl>'+'\n'
+        html += '          <dt>Total cards</dt>'+'\n'
+        html += '          <dd>'+str(len(cards))+'</dd>'+'\n'
+        html += '          <dt>Empty cards</dt>'+'\n'
+        html += '          <dd>'+str(len(empty))+'</dd>'+'\n'
+        html += '          <dt>Illegal or banned</dt>'+'\n'
+        html += '          <dd>'+str(len(illegal))+'</dd>'+'\n'
+        html += '          <dt>XMage banned</dt>'+'\n'
+        html += '          <dd>'+str(len(xmage_banned))+'</dd>'+'\n'
+        html += '          <dt>Mythic or special</dt>'+'\n'
+        html += '          <dd>'+str(len(cards_mythic_or_special))+'</dd>'+'\n'
+        html += '          <dt>Without price EUR</dt>'+'\n'
+        html += '          <dd>'+str(len(without_price_eur))+'</dd>'+'\n'
+        html += '          <dt>Without price USD</dt>'+'\n'
+        html += '          <dd>'+str(len(without_price_usd))+'</dd>'+'\n'
+        html += '          <dt>Price max EUR</dt>'+'\n'
+        html += '          <dd>'+str(max_price_eur)+'</dd>'+'\n'
+        html += '          <dt>Price max USD</dt>'+'\n'
+        html += '          <dd>'+str(max_price_usd)+'</dd>'+'\n'
+        html += '          <dt>Price >100€ or >120$</dt>'+'\n'
+        html += '          <dd>'+str(len(price_below_100))+'</dd>'+'\n'
+        html += '          <dt>Without text</dt>'+'\n'
+        html += '          <dd>'+str(len(without_text))+'</dd>'+'\n'
+        html += '          <dt>Without keywords</dt>'+'\n'
+        html += '          <dd>'+str(len(without_keywords))+'</dd>'+'\n'
+        html += '          <dt>Without keywords and text</dt>'+'\n'
+        html += '          <dd>'+str(len(without_keywords_nor_text))+'</dd>'+'\n'
+        html += '        </dl>'+'\n'
+        html += '      </details>'+'\n'
+        html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
 
-    # no text
-    prev_total_cards = total_cards
-    cards_with_text = list(filter(filter_no_text, cards))
-    new_total_cards = len(cards_with_text)
-    print('Without text:', prev_total_cards - new_total_cards)
-    print('')
+    if outformat == 'console':
+        print('')
+        print('')
+        print('### All Cards Stats ###')
+        print('')
+        print('Total cards:', len(cards))
+        print('')
+        print('Empty cards:', len(empty))
+        print('')
+        print('Illegal or banned:', len(illegal))
+        print('')
+        print('XMage banned:', len(xmage_banned))
+        print('')
+        print('Mythic or special:', len(cards_mythic_or_special))
+        print('')
+        print('Without price EUR:', len(without_price_eur))
+        print('Without price USD:', len(without_price_usd))
+        print('Price max EUR:', max_price_eur)
+        print('Price max USD:', max_price_usd)
+        print('')
+        print('Price >100€ or >120$:', len(price_below_100))
+        print('')
+        print('Without text:', len(without_text))
+        print('')
+        print('Without keywords:', len(without_keywords))
+        print('')
+        print('Without keywords and text:', len(without_keywords_nor_text))
+        print('')
 
-    # no keywords
-    prev_total_cards = total_cards
-    cards_with_keywords = list(filter(filter_no_keywords, cards))
-    new_total_cards = len(cards_with_keywords)
-    print('Without keywords:', prev_total_cards - new_total_cards)
-    print('')
+def print_deck_cards_stats(cards, valid_colors, valid_rules0, outformat = 'console'):
+    """Print statistics about deck's cards"""
 
-    # no text and no keywords
-    prev_total_cards = total_cards
-    cards_with_keywords_or_text = list(
-        filter(lambda c: filter_no_keywords(c) or filter_no_text(c), cards))
-    new_total_cards = len(cards_with_keywords_or_text)
-    print('Without keywords and text:', prev_total_cards - new_total_cards)
+    invalid_colors_len = len(cards) - len(valid_colors)
+    invalid_colors_colored = ','.join(list(map(lambda t: colorize_mana(t, no_braces = True),
+                                               INVALID_COLORS)))
+    removed_by_rules0_len = len(valid_colors) - len(valid_rules0)
+    max_price_eur = max(map(lambda c: float(c['prices']['eur'] or 0), valid_rules0))
+    max_price_usd = max(map(lambda c: float(c['prices']['usd'] or 0), valid_rules0))
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <article>'+'\n'
+        html += '      <details>'+'\n'
+        html += "        <summary>Stats: deck's cards and rules 0</summary>"+'\n'
+        html += '        <dl>'+'\n'
+        html += '          <dt>Invalid colors</dt>'+'\n'
+        html += '          <dd>'+invalid_colors_colored+' ('+str(invalid_colors_len)+')'+'</dd>'+'\n'
+        html += '          <dt>Removed by rules 0</dt>'+'\n'
+        html += '          <dd>'+str(removed_by_rules0_len)+'</dd>'+'\n'
+        html += '          <dt>Price max EUR</dt>'+'\n'
+        html += '          <dd>'+str(max_price_eur)+'</dd>'+'\n'
+        html += '          <dt>Price max USD</dt>'+'\n'
+        html += '          <dd>'+str(max_price_usd)+'</dd>'+'\n'
+        html += '        </dl>'+'\n'
+        html += '      </details>'+'\n'
+        html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        print('')
+        print('')
+        print('### Stats for this deck and rules 0 ###')
+        print('')
+        print('Invalid colors', invalid_colors_colored, '('+str(invalid_colors_len)+')')
+        print('')
+        print('Removed by rules 0:', removed_by_rules0_len)
+        print('')
+        print('Price max EUR:', max_price_eur)
+        print('Price max USD:', max_price_usd)
+        print('')
 
 def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None):
     """Show pre-selected lands organised by features, for the user to select some"""
@@ -1041,7 +1106,7 @@ def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None
             # shity
             and c['name'] != "Springjack Pasture"
             # specific
-            and (c['name'] != "The Grey Havens" or FILL_GRAVEYARD_FAST)),
+            and (c['name'] != "The gray Havens" or FILL_GRAVEYARD_FAST)),
         cards_lands_multicolors_producers))
 
     # split multicolors producers between tapped or not
@@ -1480,8 +1545,8 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
                trunc_name = 25, trunc_type = 16, trunc_text = 'auto', trunc_mana = 10,
                merge_type_powr_tough = True, return_str = False, print_text = True,
                print_keywords = False, print_edhrank = True, print_price = True,
-               trunc_powr_tough = 6, separator_color = 'dark_grey', rank_price_color = 'light_grey',
-               rank_price_attrs = None):
+               trunc_powr_tough = 6, separator_color = 'dark_gray', rank_price_color = 'light_gray',
+               rank_price_attrs = None, outformat = 'console', outdir = '/tmp'):
     """Display a card or return a string representing it"""
 
     merge_type_powr_tough = merge_type_powr_tough and print_type and print_powr_tough
@@ -1490,100 +1555,155 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
     len_type = '16' if not trunc_type else str(trunc_type)
 
     line = ''
-    line_visible_len = 0
-    separator = ' | '
-    separator_colored = colored(separator, separator_color)
 
-    rank_price_attrs = rank_price_attrs if rank_price_attrs is not None else ['dark']
-
-    indent_fmt = '{:<'+str(indent)+'}'
-    indent_part = indent_fmt.format('')
-    line += indent_part
-    line_visible_len += len(indent_part)
-
-    if print_edhrank:
-        edhrank_fmt = '# {:>5}'
-        edhrank_part = edhrank_fmt.format(card['edhrec_rank'] if 'edhrec_rank' in card else '')
-        edhrank_part_colored = colored(edhrank_part, rank_price_color, attrs=rank_price_attrs)
-        line += edhrank_part_colored + separator_colored
-        line_visible_len += len(edhrank_part + separator)
-
-    if print_price:
-        price_fmt = '$ {:>5}'
-        price_part = price_fmt.format(str(card['prices']['usd'])
-                                      if 'prices' in card and 'usd' in card['prices']
-                                      and card['prices']['usd'] else '')
-        price_part_colored = colored(price_part, rank_price_color, attrs=rank_price_attrs)
-        line += price_part_colored + separator_colored
-        line_visible_len += len(price_part + separator)
-
-    if print_mana:
-        mana_fmt = '{:>'+('21' if not trunc_mana else str(trunc_mana))+'}'
-        mana_part = mana_fmt.format(
-            truncate_text((' // '.join(get_mana_cost(card)) if print_mana else ''),
-                          trunc_mana))
-        mana_part_colored = colorize_mana(mana_part, no_braces = True)
-        line += mana_part_colored + separator_colored
-        line_visible_len += len(mana_part + separator)
-
-    if merge_type_powr_tough:
-        if is_creature(card):
-            powr_tough_fmt = '{:>'+len_type+'}'
-            powr_tough_part = powr_tough_fmt.format(' // '.join(get_powr_tough(card)))
-            line += powr_tough_part + separator_colored
-            line_visible_len += len(powr_tough_part + separator)
-
-        else:
-            type_fmt = '{:<'+len_type+'}'
-            type_part = type_fmt.format(truncate_text((' // '.join(get_type_lines(card))),
-                                                      trunc_type))
-            line += type_part + separator_colored
-            line_visible_len += len(type_part + separator)
-    else:
-        if print_powr_tough:
-            powr_tough_fmt = '{:>'+str(trunc_powr_tough)+'}'
-            powr_tough_part = powr_tough_fmt.format('')
+    if outformat == 'html':
+        html = ''
+        html += '<tr class="card-line">'+'\n'
+        html += '  <td class="input">'
+        html += '<input type="checkbox" name="cards" value="'+card['name']+'"/></td>\n'
+        if print_edhrank:
+            html += '  <td class="edhrank '+rank_price_color+'">'+str(card['edhrec_rank'])+'</td>\n'
+        if print_price:
+            price = (str(card['prices']['usd']) if 'prices' in card and 'usd' in card['prices']
+                     and card['prices']['usd'] else '')
+            html += '  <td class="price '+rank_price_color+'">'+str(price)+'</td>'+'\n'
+        if print_mana:
+            mana = colorize_mana(' // '.join(get_mana_cost(card)), no_braces = True)
+            html += '  <td class="mana">'+mana+'</td>'+'\n'
+        if merge_type_powr_tough:
             if is_creature(card):
+                powr_tough = ' // '.join(get_powr_tough(card))
+                html += '  <td class="power-toughness">'+powr_tough+'</td>'+'\n'
+            else:
+                typel = truncate_text((' // '.join(get_type_lines(card))), trunc_type)
+                html += '  <td class="type">'+typel+'</td>'+'\n'
+        else:
+            if print_powr_tough:
+                powr_tough = ''
+                if is_creature(card):
+                    powr_tough = ' // '.join(get_powr_tough(card))
+                html += '  <td class="power-toughness">'+powr_tough+'</td>'+'\n'
+            if print_type:
+                typel = truncate_text((' // '.join(get_type_lines(card))), trunc_type)
+                html += '  <td class="type">'+typel+'</td>'+'\n'
+
+        name = card['name']
+        imgpath, imgwidth, imgheight = get_card_image(card, imgformat = 'normal', outdir = outdir)
+        name_and_link = ('<a class="'+get_card_colored(card)+'" href="#">'
+                            +'<span class="name">'+name+'</span>'
+                            +'<span class="image">'
+                                +'<img src="'+imgpath+'" alt="image of card '+name+'" '
+                                +'height="'+str(imgheight)+'" width="'+str(imgwidth)+'"/>'
+                            +'</span>'
+                          +'</a>')
+        html += '  <td class="name">'+name_and_link+'</td>'+'\n'
+
+        if print_keywords:
+            keywords = ' // '.join(list(map(lambda k: ', '.join(k), get_keywords(card))))
+            html += '  <td class="keywords">'+keywords+'</td>'+'\n'
+
+        if print_text:
+            text = join_oracle_texts(card, (trunc_text if trunc_text != 'auto' else False))
+            html += '  <td class="text">'+text+'</td>'+'\n'
+
+        html += '</tr>'+'\n'
+        line = html
+
+    if outformat == 'console':
+        line_visible_len = 0
+        separator = ' | '
+        separator_colored = colored(separator, separator_color)
+
+        rank_price_attrs = rank_price_attrs if rank_price_attrs is not None else ['dark']
+
+        indent_fmt = '{:<'+str(indent)+'}'
+        indent_part = indent_fmt.format('')
+        line += indent_part
+        line_visible_len += len(indent_part)
+
+        if print_edhrank:
+            edhrank_fmt = '# {:>5}'
+            edhrank_part = edhrank_fmt.format(card['edhrec_rank'] if 'edhrec_rank' in card else '')
+            edhrank_part_colored = colored(edhrank_part, rank_price_color, attrs=rank_price_attrs)
+            line += edhrank_part_colored + separator_colored
+            line_visible_len += len(edhrank_part + separator)
+
+        if print_price:
+            price_fmt = '$ {:>5}'
+            price_part = price_fmt.format(str(card['prices']['usd'])
+                                        if 'prices' in card and 'usd' in card['prices']
+                                        and card['prices']['usd'] else '')
+            price_part_colored = colored(price_part, rank_price_color, attrs=rank_price_attrs)
+            line += price_part_colored + separator_colored
+            line_visible_len += len(price_part + separator)
+
+        if print_mana:
+            mana_fmt = '{:>'+('21' if not trunc_mana else str(trunc_mana))+'}'
+            mana_part = mana_fmt.format(
+                truncate_text((' // '.join(get_mana_cost(card)) if print_mana else ''),
+                            trunc_mana))
+            mana_part_colored = colorize_mana(mana_part, no_braces = True)
+            line += mana_part_colored + separator_colored
+            line_visible_len += len(mana_part + separator)
+
+        if merge_type_powr_tough:
+            if is_creature(card):
+                powr_tough_fmt = '{:>'+len_type+'}'
                 powr_tough_part = powr_tough_fmt.format(' // '.join(get_powr_tough(card)))
-            line += powr_tough_part + separator_colored
-            line_visible_len += len(powr_tough_part + separator)
+                line += powr_tough_part + separator_colored
+                line_visible_len += len(powr_tough_part + separator)
 
-        if print_type:
-            type_fmt = '{:<'+len_type+'}'
-            type_part = type_fmt.format(truncate_text((' // '.join(get_type_lines(card))),
-                                                      trunc_type))
-            line += type_part + separator_colored
-            line_visible_len += len(type_part + separator)
+            else:
+                type_fmt = '{:<'+len_type+'}'
+                type_part = type_fmt.format(truncate_text((' // '.join(get_type_lines(card))),
+                                                        trunc_type))
+                line += type_part + separator_colored
+                line_visible_len += len(type_part + separator)
+        else:
+            if print_powr_tough:
+                powr_tough_fmt = '{:>'+str(trunc_powr_tough)+'}'
+                powr_tough_part = powr_tough_fmt.format('')
+                if is_creature(card):
+                    powr_tough_part = powr_tough_fmt.format(' // '.join(get_powr_tough(card)))
+                line += powr_tough_part + separator_colored
+                line_visible_len += len(powr_tough_part + separator)
 
-    name_fmt = '{:<'+('40' if not trunc_name else str(trunc_name))+'}'
-    name_part = name_fmt.format(truncate_text(card['name'], trunc_name))
-    name_part_colored = colored(name_part, get_card_colored(card))
-    line += name_part_colored + separator_colored
-    line_visible_len += len(name_part + separator)
+            if print_type:
+                type_fmt = '{:<'+len_type+'}'
+                type_part = type_fmt.format(truncate_text((' // '.join(get_type_lines(card))),
+                                                        trunc_type))
+                line += type_part + separator_colored
+                line_visible_len += len(type_part + separator)
 
-    if print_keywords:
-        keywords_fmt = '{}'
-        keywords_part = keywords_fmt.format(' // '.join(list(map(lambda k: ', '.join(k),
-                                                                 get_keywords(card)))))
-        line += keywords_part + (separator_colored if print_text else '')
-        line_visible_len += len(keywords_part + (separator if print_text else ''))
+        name_fmt = '{:<'+('40' if not trunc_name else str(trunc_name))+'}'
+        name_part = name_fmt.format(truncate_text(card['name'], trunc_name))
+        name_part_colored = colored(name_part, get_card_colored(card))
+        line += name_part_colored + separator_colored
+        line_visible_len += len(name_part + separator)
 
-    if print_text:
-        text_fmt = '{}'
-        text_part_colored = text_fmt.format(join_oracle_texts(
-            card, (trunc_text if trunc_text != 'auto' else False)))
+        if print_keywords:
+            keywords_fmt = '{}'
+            keywords_part = keywords_fmt.format(' // '.join(list(map(lambda k: ', '.join(k),
+                                                                    get_keywords(card)))))
+            line += keywords_part + (separator_colored if print_text else '')
+            line_visible_len += len(keywords_part + (separator if print_text else ''))
 
-        if trunc_text == 'auto' and TERM_COLS:
-            # Note: 2 is a margin, because joined lines have a dot and a space added (+1 char)
-            len_left = int(TERM_COLS) - 2 - line_visible_len
-            # text_part_no_color = text_fmt.format(join_oracle_texts(
-            #     card, (trunc_text if trunc_text != 'auto' else False), colorize = False))
-            text_wrapped = wrap(text_part_colored, width = len_left, placeholder = '…')
-            text_part_colored = (
-                '⤵\n'+('{:>'+str(line_visible_len)+'}').format('')).join(text_wrapped)
+        if print_text:
+            text_fmt = '{}'
+            text_part_colored = text_fmt.format(join_oracle_texts(
+                card, (trunc_text if trunc_text != 'auto' else False)))
 
-        text_part_colored = colorize_mana(text_part_colored)
-        line += text_part_colored
+            if trunc_text == 'auto' and TERM_COLS:
+                # Note: 2 is a margin, because joined lines have a dot and a space added (+1 char)
+                len_left = int(TERM_COLS) - 2 - line_visible_len
+                # text_part_no_color = text_fmt.format(join_oracle_texts(
+                #     card, (trunc_text if trunc_text != 'auto' else False), colorize = False))
+                text_wrapped = wrap(text_part_colored, width = len_left, placeholder = '…')
+                text_part_colored = (
+                    '⤵\n'+('{:>'+str(line_visible_len)+'}').format('')).join(text_wrapped)
+
+            text_part_colored = colorize_mana(text_part_colored)
+            line += text_part_colored
 
     if not return_str:
         print(line)
@@ -1676,15 +1796,13 @@ def assist_draw_cards(cards, land_types_invalid_regex, max_list_items = None):
                      limit = max_list_items, indent = 3)
     print('')
 
-    print('Draw cards (multiple):',
-          len(cards_draw_cards_multiple))
+    print('Draw cards (multiple):', len(cards_draw_cards_multiple))
     print('')
     print_cards_list(order_cards_by_cmc_and_name(cards_draw_cards_multiple),
                      limit = max_list_items, indent = 3)
     print('')
 
-    print('Draw cards (connives):',
-          len(connives))
+    print('Draw cards (connives):', len(connives))
     print('')
     print_cards_list(order_cards_by_cmc_and_name(connives),
                      limit = max_list_items, indent = 3)
@@ -2277,46 +2395,93 @@ def print_combo_card_names(combo):
     print(' + '.join(card_names))
 
 def print_tup_combo(tup_combo, cards, indent = 0, print_header = False, max_cards = 4,
-                    max_name_len = 30, separator_color = 'light_grey', separator_attrs = None):
+                    max_name_len = 30, separator_color = 'light_gray', separator_attrs = None,
+                    outformat = 'console', outdir = '/tmp', return_str = False):
     """Print a combo from a tuple (cards_names, combo_infos)"""
-    separator_attrs = separator_attrs if separator_attrs is not None else ['dark']
-    separator = ' | '
-    separator_colored = colored(separator, separator_color, attrs=separator_attrs)
-    plus = ' + '
-    plus_colored = colored(plus, separator_color, attrs=separator_attrs)
 
-    c_format = '{indent:>'+str(indent)+'}{cmc_total:>9}{sep}{cmc_max:>7}{sep}{cmc_min:>7}{sep}'
-    c_format += '{plus}'.join(list(map(lambda i: '{name_'+str(i)+'}', range(1, max_cards + 1))))
-    if print_header:
+    ret = ''
+
+    if outformat == 'html':
+        html = ''
+        if print_header:
+            html += '        <tr>'+'\n'
+            html += '          <th>CMC total</th>'+'\n'
+            html += '          <th>CMC max</th>'+'\n'
+            html += '          <th>CMC min</th>'+'\n'
+            for index in range(1, max_cards + 1):
+                html += '          <th>Card '+str(index)+'</th>'+'\n'
+            html += '        </tr>'+'\n'
+
+        html += '        <tr>'+'\n'
+        html += '          <td>'+str(int(tup_combo[1]['cmc_total']))+'</td>'+'\n'
+        html += '          <td>'+str(int(tup_combo[1]['cmc_max']))+'</td>'+'\n'
+        html += '          <td>'+str(int(tup_combo[1]['cmc_min']))+'</td>'+'\n'
+        for index, name in enumerate(tup_combo[0]):
+            name_and_link = ''
+            card = get_card(name, cards, strict = True)
+            imgpath, imgwidth, imgheight = get_card_image(card, imgformat = 'normal',
+                                                            outdir = outdir)
+            name_and_link = ('<a href="#">'
+                                +'<span class="name '+get_card_colored(card)+'">'
+                                    +name
+                                +'</span>'
+                                +'<span class="image">'
+                                    +'<img src="'+imgpath+'" alt="image of card '+name+'" '
+                                    +'height="'+str(imgheight)+'" width="'+str(imgwidth)+'"/>'
+                                +'</span>'
+                                +'</a>')
+            html += '          <td class="combo-card">'+name_and_link+'</td>'+'\n'
+        if len(tup_combo[0]) < max_cards:
+            for index in range(len(tup_combo[0]), max_cards):
+                html += '          <td class="combo-card"></td>'+'\n'
+        html += '        </tr>'+'\n'
+
+        ret = html
+
+    if outformat == 'console':
+        separator_attrs = separator_attrs if separator_attrs is not None else ['dark']
+        separator = ' | '
+        separator_colored = colored(separator, separator_color, attrs=separator_attrs)
+        plus = ' + '
+        plus_colored = colored(plus, separator_color, attrs=separator_attrs)
+
+        c_format = '{indent:>'+str(indent)+'}{cmc_total:>9}{sep}{cmc_max:>7}{sep}{cmc_min:>7}{sep}'
+        c_format += '{plus}'.join(list(map(lambda i: '{name_'+str(i)+'}', range(1, max_cards + 1))))
+        if print_header:
+            c_params = {
+                'indent': '',
+                'sep': separator,
+                'plus': plus,
+                'cmc_total': 'CMC total',
+                'cmc_max': 'CMC max',
+                'cmc_min': 'CMC min'}
+            for index in range(1, max_cards + 1):
+                c_params['name_'+str(index)] = ('{:^'+str(max_name_len)+'}').format('card '+str(index))
+            c_header = colored(c_format.format(**c_params), separator_color, attrs=separator_attrs)
+            ret = c_header
         c_params = {
             'indent': '',
-            'sep': separator,
-            'plus': plus,
-            'cmc_total': 'CMC total',
-            'cmc_max': 'CMC max',
-            'cmc_min': 'CMC min'}
-        for index in range(1, max_cards + 1):
-            c_params['name_'+str(index)] = ('{:^'+str(max_name_len)+'}').format('card '+str(index))
-        c_header = colored(c_format.format(**c_params), separator_color, attrs=separator_attrs)
-        print(c_header)
-    c_params = {
-        'indent': '',
-        'sep': separator_colored,
-        'plus': plus_colored,
-        'cmc_total': int(tup_combo[1]['cmc_total']),
-        'cmc_max': int(tup_combo[1]['cmc_max']),
-        'cmc_min': int(tup_combo[1]['cmc_min'])}
-    for index, name in enumerate(tup_combo[0]):
-        card = get_card(name, cards, strict = True)
-        c_params['name_'+str(index + 1)] = colored(
-                ('{:^'+str(max_name_len)+'}').format(truncate_text(name, max_name_len)),
-                get_card_colored(card))
-    if len(tup_combo[0]) < max_cards:
-        # print('Warning', 'too few cards combo:', tup_combo[0], file=sys.stderr)
-        for index in range(len(tup_combo[0]), max_cards):
-            c_params['name_'+str(index + 1)] = ''
-    c_line = c_format.format(**c_params)
-    print(c_line)
+            'sep': separator_colored,
+            'plus': plus_colored,
+            'cmc_total': int(tup_combo[1]['cmc_total']),
+            'cmc_max': int(tup_combo[1]['cmc_max']),
+            'cmc_min': int(tup_combo[1]['cmc_min'])}
+        for index, name in enumerate(tup_combo[0]):
+            card = get_card(name, cards, strict = True)
+            c_params['name_'+str(index + 1)] = colored(
+                    ('{:^'+str(max_name_len)+'}').format(truncate_text(name, max_name_len)),
+                    get_card_colored(card))
+        if len(tup_combo[0]) < max_cards:
+            # print('Warning', 'too few cards combo:', tup_combo[0], file=sys.stderr)
+            for index in range(len(tup_combo[0]), max_cards):
+                c_params['name_'+str(index + 1)] = ''
+        c_line = c_format.format(**c_params)
+        ret += c_line
+
+    if not return_str:
+        print(ret)
+
+    return ret
 
 def get_card(name, cards, return_face = False, strict = False):
     """Find a card by its name in a list of cards objects
@@ -2534,16 +2699,13 @@ def get_card_colored(card):
             card_color_letter = 'M'
     return COLOR_NAME[card_color_letter]
 
-def assist_k_core_combos(combos, cards, regex, num_cards, excludes, max_cards = 20):
+def assist_k_core_combos(combos, cards, regex, num_cards, excludes, max_cards = 20,
+                         outformat = 'console', outdir = '/tmp'):
     """Print k_core combos that have exaclty 'num_cards' cards and matching regex"""
     print('DEBUG Searching for all', num_cards, 'cards combos with', regex, "...",
-          'Please wait up to 2 minutes ...', flush=True, file=sys.stderr)
+          'Please wait up to '+str(num_cards - 1)+' minute(s) ...', flush=True, file=sys.stderr)
     new_combos = get_combos(combos, cards, max_cards = num_cards, min_cards = num_cards,
                             combo_res_regex = regex, excludes = excludes)
-
-    print('')
-    print('All', num_cards, 'cards combos with', regex, ':', len(new_combos))
-    print('')
 
     # TODO use a graph of combos:
     #       - with weighted edges for percentage of shared cards
@@ -2558,48 +2720,80 @@ def assist_k_core_combos(combos, cards, regex, num_cards, excludes, max_cards = 
                     if other_name not in new_combos_relations[name]:
                         new_combos_relations[name].append(other_name)
 
-    print('Cards in those combos:', len(new_combos_relations))
-    print('')
-
     nx_graph = get_nx_graph(new_combos_relations)
     print('DEBUG NX Graph:', 'nodes:', nx_graph.number_of_nodes(), ',',
             'edges:', nx_graph.number_of_edges(), file=sys.stderr)
-
     (k_nodes, k_num, k_len) = k_core_cards(nx_graph)
 
     if not k_nodes:
         print('Warning: impossible to find a k-core for all', num_cards, 'cards combos with', regex,
               file=sys.stderr)
-    elif k_len > max_cards:
-        print('Too much cards ('+str(k_len)+') in the '+str(k_num)+'-core, skipping it')
-    else:
+        return
+
+    if k_len > max_cards:
+        print('DEBUG Too much cards ('+str(k_len)+') in the '+str(k_num)+'-core, skipping it',
+              file=sys.stderr)
+        return
+
+    k_cards = tuple(sorted(list(map(lambda n: nx_graph.nodes[n]['card'], k_nodes))))
+
+    k_combos = {}
+    for card_names, combo_infos in new_combos.items():
+        add_combo = True
+        for name in card_names:
+            if name not in k_cards:
+                add_combo = False
+                break
+        if add_combo and card_names not in k_combos:
+            k_combos[card_names] = combo_infos
+
+    k_combos_order_cmc_max = list(sorted(k_combos.items(), key=lambda t: t[1]['cmc_max']))
+
+    if outformat == 'html':
+        html = ''
+        html += '    <article>'+'\n'
+        html += '      <details>'+'\n'
+        html += '        <summary>'
+        html += ('All '+str(num_cards)+' cards combos with '+regex+' '+str(k_num)+'-core cards: '
+                 +str(k_len)+' cards')
+        html += '</summary>'+'\n'
+        html += '        <table class="cards-list">'+'\n'
+        for node in k_nodes:
+            card_name = nx_graph.nodes[node]['card']
+            html += print_card(get_card(card_name, cards), outformat = outformat, outdir = outdir,
+                               return_str = True)
+        html += '        </table>'+'\n'
+        html += '      </details>'+'\n'
+        html += '      <details>'+'\n'
+        html += '        <summary>'
+        html += ('All '+str(num_cards)+' cards combos with '+regex+' '+str(k_num)+'-core combos: '
+                 +str(len(k_combos))+' combos')
+        html += '</summary>'+'\n'
+        html += '        <table class="combos-list">'+'\n'
+        for index, tup_combo in enumerate(k_combos_order_cmc_max):
+            html += print_tup_combo(tup_combo, cards, indent = 3, max_cards = num_cards,
+                                    print_header = index == 0, outformat = outformat,
+                                    outdir = outdir, return_str = True)
+        html += '        </table>'+'\n'
+        html += '      </details>'+'\n'
+        html += '    </article>'+'\n'
+        print(html)
+
+    if outformat == 'console':
         print('All', num_cards, 'cards combos with', regex, str(k_num)+'-core cards:', k_len,
-              'cards')
+                'cards')
         print('')
         for node in k_nodes:
             card_name = nx_graph.nodes[node]['card']
             print_card(get_card(card_name, cards))
         print('')
 
-        k_cards = tuple(sorted(list(map(lambda n: nx_graph.nodes[n]['card'], k_nodes))))
-
-        k_combos = {}
-        for card_names, combo_infos in new_combos.items():
-            add_combo = True
-            for name in card_names:
-                if name not in k_cards:
-                    add_combo = False
-                    break
-            if add_combo and card_names not in k_combos:
-                k_combos[card_names] = combo_infos
-
         print('All', num_cards, 'cards combos with', regex, str(k_num)+'-core combos:',
-              len(k_combos), 'combos')
+                len(k_combos), 'combos')
         print('')
-        k_combos_order_cmc_max = list(sorted(k_combos.items(), key=lambda t: t[1]['cmc_max']))
         for index, tup_combo in enumerate(k_combos_order_cmc_max):
             print_tup_combo(tup_combo, cards, indent = 3, max_cards = num_cards,
-                            print_header = index == 0)
+                            print_header = index == 0, outformat = outformat)
         print('')
 
 def combo_effect_normalize(text):
@@ -2618,6 +2812,404 @@ def print_cards_list(cards, limit = None, indent = 0, **kwargs):
                 break
             print_card(card, indent = indent, **kwargs)
 
+def display_html_header(title = 'MTG Deck Builder Assistant | made by Michael Bideau'):
+    html = ''
+    html += '<!DOCTYPE html>'+'\n'
+    html += '<html lang="en">'+'\n'
+    html += '<head>'+'\n'
+    html += '  <meta charset="utf-8" />'+'\n'
+    html += '  <title>'+title+'</title>'+'\n'
+    html += '  <style>'+'\n'
+    html += '  .red, a.red { color: red; }'+'\n'
+    html += '  .blue, a.blue { color: blue; }'+'\n'
+    html += '  .gray, a.gray { color: gray; }'+'\n'
+    html += '  .yellow, a.yellow { color: burlywood; }'+'\n'
+    html += '  .light_green, a.light_green { color: green; }'+'\n'
+    html += '  .white, a.white { color: lightgrey; }'+'\n'
+    html += '  .magenta, a.magenta { color: magenta; }'+'\n'
+    html += '  .cyan, a.cyan { color: cyan; }'+'\n'
+    html += '  .light_gray, a.light_gray { color: silver; }'+'\n'
+    html += '  .light_yellow, a.light_yellow { color: darkkhaki; }'+'\n'
+    html += '  .light_blue, a.light_blue { color: lightblue; }'+'\n'
+    html += '  .dark_gray, a.dark_gray { color: dimgray; }'+'\n'
+    html += '  body { padding: 0 10px 0;color: #444; }'+'\n'
+    html += '  header h1 { margin-bottom: 0; }'+'\n'
+    html += '  header .subtitle { margin-top: 5px; color: gray; font-size: 0.7em; }'+'\n'
+    html += '  header .subtitle a { color: inherit; }'+'\n'
+    html += '  dl {'+'\n'
+    html += '    display: grid;'+'\n'
+    html += '    grid-template-columns: max-content auto;'+'\n'
+    html += '  }'+'\n'
+    html += '  dt {'+'\n'
+    html += '    grid-column-start: 1;'+'\n'
+    html += '    font-size: 0.8em;'+'\n'
+    html += '    vertical-align: middle;'+'\n'
+    html += '    color: gray;'+'\n'
+    html += '  }'+'\n'
+    html += '  dd {'+'\n'
+    html += '    grid-column-start: 2;'+'\n'
+    html += '  }'+'\n'
+    html += '  summary::-webkit-details-marker {'+'\n'
+    html += '    color: #00ACF3;'+'\n'
+    html += '    font-size: 125%;'+'\n'
+    html += '    margin-right: 2px;'+'\n'
+    html += '  }'+'\n'
+    html += '  summary:focus {'+'\n'
+    html += '    outline-style: none;'+'\n'
+    html += '  }'+'\n'
+    html += '  details > * { margin-left: 20px; }'+'\n'
+    html += '  details summary {'+'\n'
+    html += '    margin: 16px 0 10px;'+'\n'
+    html += '    font-size: 1.2em;'+'\n'
+    html += '    font-weight: bold;'+'\n'
+    html += '    background-color: #eee;'+'\n'
+    html += '    padding: 10px;'+'\n'
+    html += '    border-radius: 10px;'+'\n'
+    html += '  }'+'\n'
+    html += '  details details summary {'+'\n'
+    html += '    font-size: 1.2em;'+'\n'
+    html += '  }'+'\n'
+    html += '  .commander-card { display: grid; gap: 0px; }'+'\n'
+    html += '  .commander-card .image { grid-column-start: 1; grid-column-end: 1; }'+'\n'
+    html += '  .commander-card .image > img {  max-height: 400px; width: auto; }'+'\n'
+    html += '  .commander-card .attributes { grid-column-start: 2; grid-column-end: 3; }'+'\n'
+    html += '  .card-line .name a, .combo-card a { position:relative; text-decoration: dotted; color: inherit; }'+'\n'
+    html += '  .card-line .name a span.image, .combo-card a span.image { position:absolute; display:none; z-index:99; }'+'\n'
+    html += '  .card-line .name a:hover span.image, .combo-card a:hover span.image { display:block; left: 100%; bottom: 100%; }'+'\n'
+    html += '  .card-line .name a:hover span.image > img, .combo-card a:hover span.image > img { max-height: 400px; width: auto; }'+'\n'
+    html += '  button.action {'+'\n'
+    html += '    font-size: 2em;'+'\n'
+    html += '    padding: 10px;'+'\n'
+    html += '    background-color: lightgreen;'+'\n'
+    html += '    border-radius: 10px;'+'\n'
+    html += '  }'+'\n'
+    html += '  </style>'+'\n'
+    html += '  <script>'+'\n'
+    html += '  function get_deck_list() {'+'\n'
+    html += '    var checkedBoxes = document.querySelectorAll("input[name=cards]:checked");'+'\n'
+    html += '    cards = [];'+'\n'
+    html += '    for (i = 0; i < checkedBoxes.length; i++) { cards.push(checkedBoxes[i].value); }'+'\n'
+    html += '    return cards;'+'\n'
+    html += '  }'+'\n'
+    html += '  function generate_deck_list() {'+'\n'
+    html += '    var div = document.getElementById("deck-list");'+'\n'
+    html += '    div.innerHTML = "<p>"+get_deck_list().join("<br/>")+"</p>";'+'\n'
+    html += '  }'+'\n'
+    html += '  </script>'+'\n'
+    html += '</head>'+'\n'
+    html += '<body>'+'\n'
+    html += '  <header>'+'\n'
+    html += '    <h1>'+title+'</h1>'+'\n'
+    html += '    <p class="subtitle">'
+    html += 'Get the <a href="'+SOURCE_URL+'">source code on Github</a>'
+    html += '</p>'+'\n'
+    html += '  </header>'+'\n'
+    print(html)
+
+def display_commander_card(card, commander_combos_regex, outformat = 'console', outdir = '/tmp'):
+    """Display the commander card and extracted attributes/features"""
+
+    commander_color_name = get_card_colored(card)
+
+    # image
+    get_commander_img = outformat == 'html' or (USE_SIXEL and sys.stdout.isatty())
+    imgpath, imgwidth, imgheight = None, None, None
+    if get_commander_img:
+        imgpath, imgwidth, imgheight = get_card_image(card, imgformat = 'normal', outdir = outdir)
+
+    # html
+    if outformat == 'html':
+        html = ''
+        html += '  <h2 class="commander-title">Commander</h2>'+'\n'
+        html += '  <div class="commander-card">'+'\n'
+        html += '    <div class="image">'+'\n'
+        html += '      <img src="'+imgpath+'" />'+'\n'
+        html += '    </div>'+'\n'
+        html += '    <div class="attributes">'+'\n'
+        html += '      <dl>'+'\n'
+        html += '        <dt>Commander</dt>'+'\n'
+        html += '        <dd class="'+commander_color_name+'">'+card['name']+'</dd>'+'\n'
+        html += '        <dt>Identity</dt>'+'\n'
+        html += '        <dd>'+','.join(list(map(lambda t: colorize_mana(t, no_braces = True),
+                                                    card['color_identity'])))+'</dd>'+'\n'
+        html += '        <dt>Colors</dt>'+'\n'
+        html += '        <dd>'+','.join(list(map(lambda t: colorize_mana(t, no_braces = True),
+                                                    card['colors'])))+'</dd>'+'\n'
+        html += '        <dt>Mana</dt>'+'\n'
+        html += '        <dd>'+(colorize_mana(card['mana_cost'])
+                                +'(CMC:'+str(card['cmc'])+')')+'</dd>'+'\n'
+        html += '        <dt>Type</dt>'+'\n'
+        html += '        <dd class="'+commander_color_name+'">'+card['type_line']+'</dd>'+'\n'
+        html += '        <dt>Keywords</dt>'+'\n'
+        html += '        <dd>'+','.join(card['keywords'])+'</dd>'+'\n'
+        html += '        <dt>Text</dt>'+'\n'
+        html += '        <dd>'+join_oracle_texts(card)+'</dd>'+'\n'
+        html += '        <dt>Combo exp</dt>'+'\n'
+        html += '        <dd>'+commander_combos_regex+'</dd>'+'\n'
+        html += '      </dl>'+'\n'
+        html += '    </div>'+'\n'
+        html += '  </div>'+'\n'
+        print(html)
+
+    # console
+    if outformat == 'console':
+        print('')
+        print('')
+        print('### Commander card ###')
+        print('')
+
+        # display image (if terminal is sixel compatible, see https://www.arewesixelyet.com)
+        if USE_SIXEL and sys.stdout.isatty():  # in a terminal
+            extraopts = {}
+            if imgwidth is not None and imgheight is not None:
+                extraopts['w'] = imgwidth
+                extraopts['h'] = imgheight
+            # print('Image width:', imgwidth)
+            # print('Term columns:', TERM_COLS)
+            sys.stdout.flush()
+            sys.stderr.flush()
+            if TERM_COLS > 100:
+                img_writer = sixel.SixelWriter()
+                # img_writer.save_position(sys.stdout)
+                # img_writer.move_y(1, False, sys.stdout)
+                cell_x = int(TERM_COLS / 2) - 3
+                #img_writer.move_x(cell_x, True, sys.stdout)
+                extraopts['x'] = cell_x
+                extraopts['absolute'] = True
+                img_writer.draw(imgpath, **extraopts)
+                for _ in range(1, 19):
+                    print('\033[3A')  # move one line up
+                # print('\033[')  # reset
+                # img_writer.restore_position(sys.stdout)
+                # for index in range(1, 4):  # move 3 lines down
+                #     print('')
+                print('')
+            else:
+                img_writer = converter.SixelConverter(imgpath, **extraopts)
+                img_writer.write(sys.stdout)
+
+        print('Commander:', colored(card['name'], commander_color_name))
+        print(' Identity:', ','.join(list(map(lambda t: colorize_mana(t, no_braces = True),
+                                              card['color_identity']))))
+        print('   Colors:', ','.join(list(map(lambda t: colorize_mana(t, no_braces = True),
+                                              card['colors']))))
+        print('     Mana:', colorize_mana(card['mana_cost']), '(CMC:'+str(card['cmc'])+')')
+        print('     Type:', colored(card['type_line'], commander_color_name))
+        print(' Keywords:', card['keywords'])
+        print('     Text:', card['oracle_text'])
+        print('Combo exp:', commander_combos_regex)
+
+def display_deck_building_header(outformat = 'console'):
+    """Display the deck building header"""
+
+    # html
+    if outformat == 'html':
+        html = '  <h2>Deck building</h2>'
+        print(html)
+
+    # console
+    if outformat == 'console':
+        print('')
+        print('')
+        print('### Deck building ###')
+        print('')
+
+def assist_commander_combos(commander_combos_no_filter, commander_combos, commander_combos_regex,
+                            combos, cards, outformat = 'console', outdir = '/tmp'):
+    """TODO"""
+
+    combos_rank_1 = {}
+    combos_rank_2 = {}
+
+    commander_combos_filtered = None
+
+    c_combos_rank_1_x_cards = {}
+    c_combos_rank_2_x_cards = {}
+
+    if commander_combos:
+
+        c_combos = commander_combos
+
+        if commander_combos_regex:
+            commander_combos_filtered = get_combos(combos, cards, name = COMMANDER_NAME,
+                                                   combo_res_regex = commander_combos_regex)
+            c_combos = commander_combos_filtered
+
+        # rank 1
+        combos_rank_1 = c_combos
+        combos_rank_1_names = set([])
+        for count in range(2, 5):
+            key = '4+' if count == 4 else str(count)
+
+            if key not in c_combos_rank_1_x_cards:
+                c_combos_rank_1_x_cards[key] = {}
+
+            c_combos_rank_1_x_cards[key]['combos'] = dict(sorted(
+                {k: v for k, v in c_combos.items() if len(k) == count}.items(),
+                key=lambda t: t[1]['cmc_total']))
+
+            c_combos_rank_1_x_cards[key]["cards names"] = set(filter(
+                lambda n: n != COMMANDER_NAME,
+                [name for names in c_combos_rank_1_x_cards[key]['combos'].keys() for name in names]))
+
+            combos_rank_1_names |= c_combos_rank_1_x_cards[key]['cards names']
+
+        # rank 2
+        c_combos_cards = []
+        for card_names in c_combos:
+            for card_name in card_names:
+                if card_name not in c_combos_cards and card_name != COMMANDER_NAME:
+                    c_combos_cards.append(card_name)
+        c_combos_cards = tuple(sorted(c_combos_cards))
+        combos_rank_2_excludes = list(map(lambda names: tuple(sorted(names)), c_combos.keys()))
+
+        for card_name in c_combos_cards:
+            print('DEBUG Searching for combos related to', card_name, '...', flush=True,
+                file=sys.stderr)
+            card_combos = get_combos(combos, cards, name = card_name,
+                                     combo_res_regex = commander_combos_regex,
+                                     excludes = combos_rank_2_excludes)
+            if card_combos:
+                for c_cards, c_info in card_combos.items():
+                    if c_cards not in combos_rank_2:
+                        combos_rank_2[c_cards] = c_info
+
+        for count in range(2, 5):
+            key = '4+' if count == 4 else str(count)
+
+            if key not in c_combos_rank_2_x_cards:
+                c_combos_rank_2_x_cards[key] = {}
+
+            c_combos_rank_2_x_cards[key]['combos'] = dict(sorted(
+                {k: v for k, v in combos_rank_2.items() if len(k) == count}.items(),
+                key=lambda t: t[1]['cmc_total']))
+
+            c_combos_rank_2_x_cards[key]['cards names'] = set(filter(
+                lambda n: n != COMMANDER_NAME and n not in combos_rank_1_names,
+                [name for names in c_combos_rank_2_x_cards[key]['combos'].keys() for name in names]))
+
+    # HTML
+    if outformat == 'html':
+        html = '  <section>'
+        html += '    <dl>'+'\n'
+        html += '      <dt>Commander combos</dt>'+'\n'
+        html += '      <dd>'+str(len(commander_combos_no_filter))+'</dd>'+'\n'
+        if commander_combos:
+            html += '      <dt>Commander combos (valid rules 0)</dt>'+'\n'
+            html += '      <dd>'+str(len(commander_combos))+'</dd>'+'\n'
+
+            if commander_combos_filtered:
+                html += '      <dt>Commander combos '+commander_combos_regex+'</dt>'+'\n'
+                html += '      <dd>'+str(len(commander_combos_filtered))+'</dd>'+'\n'
+
+        html += '    </dl>'+'\n'
+
+        if c_combos_rank_1_x_cards:
+            html += '  <h3>Combos rank 1</h3>'+'\n'
+
+            for count in range(2, 5):
+                key = '4+' if count == 4 else str(count)
+
+                html += '    <details>'+'\n'
+                html += '      <summary>'
+                html += ('rank 1 combos with '+key+' cards: '
+                         +str(len(c_combos_rank_1_x_cards[key]['combos']))+' combos,'
+                         +'+'+str(len(c_combos_rank_1_x_cards[key]['cards names']))+' cards')
+                html += '</summary>'+'\n'
+                html += '      <h4>Combos</h4>'+'\n'
+                html += '      <table class="combos-list">'+'\n'
+                for index, tup_combo in enumerate(c_combos_rank_1_x_cards[key]['combos'].items()):
+                    html += print_tup_combo(tup_combo, cards, indent = 8, max_cards = count,
+                                            print_header = index == 0, outformat = outformat,
+                                            outdir = outdir, return_str = True)
+                html += '      </table>'+'\n'
+                html += '      <h4>Cards</h4>'+'\n'
+                html += '      <table class="cards-list">'+'\n'
+                for name in c_combos_rank_1_x_cards[key]['cards names']:
+                    html += print_card(get_card(name, cards), outformat = outformat,
+                                       outdir = outdir, return_str = True)
+                html += '      </table>'+'\n'
+                html += '    </details>'+'\n'
+
+        if c_combos_rank_2_x_cards:
+            html += '  <h3>Combos rank 2</h3>'+'\n'
+
+            for count in range(2, 5):
+                key = '4+' if count == 4 else str(count)
+
+                html += '    <details>'+'\n'
+                html += '      <summary>'
+                html += ('rank 2 combos with '+key+' cards: '
+                         +str(len(c_combos_rank_2_x_cards[key]['combos']))+' combos,'
+                         +'+'+str(len(c_combos_rank_2_x_cards[key]['cards names']))+' cards')
+                html += '</summary>'+'\n'
+                html += '      <h4>Combos</h4>'+'\n'
+                html += '      <table class="combos-list">'+'\n'
+                for index, tup_combo in enumerate(c_combos_rank_2_x_cards[key]['combos'].items()):
+                    html += print_tup_combo(tup_combo, cards, indent = 8, max_cards = count,
+                                            print_header = index == 0, outformat = outformat,
+                                            outdir = outdir, return_str = True)
+                html += '      </table>'+'\n'
+                html += '      <h4>Cards</h4>'+'\n'
+                html += '      <table class="cards-list">'+'\n'
+                for name in c_combos_rank_2_x_cards[key]['cards names']:
+                    html += print_card(get_card(name, cards), outformat = outformat,
+                                       outdir = outdir, return_str = True)
+                html += '      </table>'+'\n'
+                html += '    </details>'+'\n'
+
+        html += '  </section>'
+
+        print(html)
+
+    # console
+    if outformat == 'console':
+        print('Commander combos:', len(commander_combos_no_filter))
+        print('')
+        if commander_combos:
+            print('Commander combos (valid rules 0):', len(commander_combos))
+
+            if commander_combos_filtered:
+                print('Commander combos filtered '+commander_combos_regex+':',
+                    len(commander_combos_filtered))
+                print('')
+
+            for count in range(2, 5):
+                key = '4+' if count == 4 else str(count)
+
+                if c_combos_rank_1_x_cards[key]['combos']:
+                    print('    '+key+' cards:', len(c_combos_rank_1_x_cards[key]['combos']),
+                          'combos,', '+'+str(len(c_combos_rank_1_x_cards[key]['cards names'])),
+                          'cards')
+                    print('')
+                    for index, tup_combo in enumerate(
+                            c_combos_rank_1_x_cards[key]['combos'].items()):
+                        print_tup_combo(tup_combo, cards, indent = 8, max_cards = count,
+                                        print_header = index == 0)
+                    print('')
+            print('')
+
+            if combos_rank_2:
+                print('Commander combos rank 2:', len(combos_rank_2))
+                print('')
+
+                for count in range(2, 5):
+                    key = '4+' if count == 4 else str(count)
+
+                    if c_combos_rank_2_x_cards[key]['combos']:
+                        print('    '+key+' cards:', len(c_combos_rank_2_x_cards[key]['combos']),
+                              'combos,', '+'+str(len(c_combos_rank_2_x_cards[key]['cards names'])),
+                              'cards')
+                        print('')
+                        if count < 4:
+                            for index, tup_combo in enumerate(
+                                    c_combos_rank_2_x_cards[key]['combos'].items()):
+                                print_tup_combo(tup_combo, cards, indent = 8, max_cards = count,
+                                                print_header = index == 0)
+                            print('')
+
+    return combos_rank_1, combos_rank_2
+
 def main():
     """Main program"""
     global COMMANDER_NAME
@@ -2626,6 +3218,7 @@ def main():
     global XMAGE_COMMANDER_CARDS_BANNED
     global TERM_COLS
     global TERM_LINES
+    global colored
 
     parser = ArgumentParser(
         prog='deck_builder_assistant.py',
@@ -2640,7 +3233,21 @@ def main():
                         help='list combos effects')
     parser.add_argument('-m', '--max-list-items', type=int, default=10,
                         help='limit listing to that number of items (default to 10)')
+    parser.add_argument('-o', '--output', default=sys.stdout,
+                        help='output to this file (default to stdout)')
+    parser.add_argument('-d', '--outdir', default='/tmp',
+                        help='output to this directory (default to /tmp)')
+    parser.add_argument('--html', action='store_true', help='output format to an HTML page')
+    # TODO Add a parameter to exclude MTG sets by name or code
     args = parser.parse_args()
+
+    if args.list_combos_effects and args.html:
+        print("Error: option '--list-combos-effects' and '--html' are mutualy exclusive "
+              "(choose only one)", file=sys.stderr)
+        sys.exit(1)
+
+    if args.output != sys.stdout:
+        sys.stdout = open(args.output, 'wt')
 
     COMMANDER_NAME = args.commander_name
 
@@ -2649,8 +3256,9 @@ def main():
 
     # combo
     combos = get_commanderspellbook_combos()
-    print('DEBUG Combos database:', len(combos), 'combos')
-    print('')
+    print('', file=sys.stderr)
+    print('DEBUG Combos database:', len(combos), 'combos', file=sys.stderr)
+    print('', file=sys.stderr)
 
     commander_combos_regex = '|'.join(args.combo) if args.combo else None
     combos_effects = {}
@@ -2672,21 +3280,21 @@ def main():
         print("Warning: no combo effect found matching specified argument '"+
               commander_combos_regex+"'",
               file=sys.stderr)
-        print('')
+        print('', file=sys.stderr)
         print("Suggestion: look at the list of combos effect with option '-l' and try to identify "
               "few words that will match all combos your are interested in, or use more generic "
               "wording like 'win|damage|lifeloss|lose' (use '|' to express an 'or' expression)",
               file=sys.stderr)
-        print('')
+        print('', file=sys.stderr)
         sys.exit(1)
 
     if args.list_combos_effects:
         combos_effects = dict(sorted(combos_effects.items(), key=lambda t: t[1], reverse = True))
-        print('DEBUG Combos effects:', len(combos_effects))
+        print('Combos effects:', len(combos_effects))
         print('')
         combos_to_print = combos_effects
         if commander_combos_regex and combos_effects_matches:
-            print('DEBUG Combos effects matched:', len(combos_effects_matches))
+            print('Combos effects matched:', len(combos_effects_matches))
             print('')
             combos_to_print = {k: v for k, v in combos_effects.items()
                                if k in combos_effects_matches}
@@ -2699,457 +3307,248 @@ def main():
 
     XMAGE_COMMANDER_CARDS_BANNED = get_xmage_commander_banned_list()
 
+    # get scryfall cards database
+    cards = None
     scryfall_bulk_data = get_scryfall_bulk_data()
     scryfall_cards_db_json_file = get_scryfall_cards_db(scryfall_bulk_data)
-
     with open(scryfall_cards_db_json_file, "r", encoding="utf8") as r_file:
         cards = json.load(r_file)
 
-        # TODO Add a parameter to exclude MTG sets by name or code
+    # output format
+    outformat = 'html' if args.html else 'console'
 
-        total_cards = len(cards)
-        print_all_cards_stats(cards, total_cards)
+    # HTML specifics
+    if args.html:
+        def colored(text, color, *pos, **kwargs):
+            """Return the text colored"""
+            return '<span class="'+color+'">'+text+'</span>'
 
-        # for name in ['War of the Last Alliance', 'Wall of Shards', 'Vexing Sphinx', 'Mistwalker',
-        #              'Pixie Guide', 'Library of Lat-Nam', 'Time Beetle', "Mastermind's Acquisition",
-        #              'Dark Petition', 'Sky Skiff', 'Bloodvial Purveyor', 'Battlefield Raptor',
-        #              'Plumeveil', 'Sleep-Cursed Faerie', 'Path of Peril', 'Sadistic Sacrament',
-        #              'Incisor Glider',]:
-        #     card = get_card(name, cards, strict = True)
-        #     print_card(card, print_type = False)
-        # sys.exit(0)
+        display_html_header()
 
-        print('')
-        print('')
-        print('### Commander card ###')
-        print('')
+    print_all_cards_stats(cards, outformat = outformat)
 
-        commander_card = list(filter(lambda c: c['name'] == COMMANDER_NAME, cards))[0]
-        if not commander_card:
-            print("Error: failed to find the commander card '", COMMANDER_NAME, "'")
-            sys.exit(1)
+    # for name in ['War of the Last Alliance', 'Wall of Shards', 'Vexing Sphinx', 'Mistwalker',
+    #              'Pixie Guide', 'Library of Lat-Nam', 'Time Beetle', "Mastermind's Acquisition",
+    #              'Dark Petition', 'Sky Skiff', 'Bloodvial Purveyor', 'Battlefield Raptor',
+    #              'Plumeveil', 'Sleep-Cursed Faerie', 'Path of Peril', 'Sadistic Sacrament',
+    #              'Incisor Glider',]:
+    #     card = get_card(name, cards, strict = True)
+    #     print_card(card, print_type = False)
+    # sys.exit(0)
 
-        # display image (if terminal is sixel compatible, see https://www.arewesixelyet.com)
-        if USE_SIXEL and sys.stdout.isatty():  # in a terminal
-            imgpath, imgwidth, imgheight = get_card_image(commander_card, imgformat = 'normal')
-            extraopts = {}
-            if imgwidth is not None and imgheight is not None:
-                extraopts['w'] = imgwidth
-                extraopts['h'] = imgheight
-            # print('Image width:', imgwidth)
-            # print('Term columns:', TERM_COLS)
-            sys.stdout.flush()
-            sys.stderr.flush()
-            if TERM_COLS > 100:
-                img_writer = sixel.SixelWriter()
-                # img_writer.save_position(sys.stdout)
-                # img_writer.move_y(1, False, sys.stdout)
-                cell_x = int(TERM_COLS / 2) - 3
-                #img_writer.move_x(cell_x, True, sys.stdout)
-                extraopts['x'] = cell_x
-                extraopts['absolute'] = True
-                img_writer.draw(imgpath, **extraopts)
-                for index in range(1, 19):
-                    print('\033[3A')  # move one line up
-                # print('\033[')  # reset
-                # img_writer.restore_position(sys.stdout)
-                # for index in range(1, 4):  # move 3 lines down
-                #     print('')
-                print('')
-            else:
-                img_writer = converter.SixelConverter(imgpath, **extraopts)
-                img_writer.write(sys.stdout)
+    commander_card = list(filter(lambda c: c['name'] == COMMANDER_NAME, cards))[0]
+    if not commander_card:
+        print("Error: failed to find the commander card '", COMMANDER_NAME, "'",
+                file=sys.stderr)
+        sys.exit(1)
 
-        commander_color_identity = commander_card['color_identity']
-        if not COMMANDER_COLOR_IDENTITY:
-            COMMANDER_COLOR_IDENTITY = set(commander_card['color_identity'])
-        COMMANDER_COLOR_IDENTITY_COUNT = len(COMMANDER_COLOR_IDENTITY)
-        commander_colors = commander_card['colors']
-        commander_mana_cost = commander_card['mana_cost']
-        commander_mana_cmc = commander_card['cmc']
-        commander_type = commander_card['type_line']
-        commander_keywords = commander_card['keywords']
-        if not commander_keywords:
-            commander_keywords = COMMANDER_KEYWORDS
-        commander_keywords = set(commander_keywords)
-        commander_text = commander_card['oracle_text']
+    if not COMMANDER_COLOR_IDENTITY:
+        COMMANDER_COLOR_IDENTITY = set(commander_card['color_identity'])
+    COMMANDER_COLOR_IDENTITY_COUNT = len(COMMANDER_COLOR_IDENTITY)
 
-        commander_color_name = get_card_colored(commander_card)
+    display_commander_card(commander_card, commander_combos_regex, outformat = outformat,
+                           outdir = args.outdir)
 
-        print('Commander:', colored(COMMANDER_NAME, commander_color_name))
-        print(' Identity:', ','.join(list(map(lambda t: colorize_mana(t, no_braces = True),
-                                              commander_color_identity))))
-        print('   Colors:', ','.join(list(map(lambda t: colorize_mana(t, no_braces = True),
-                                              commander_colors))))
-        print('     Mana:', colorize_mana(commander_mana_cost), '(CMC:'+str(commander_mana_cmc)+')')
-        print('     Type:', colored(commander_type, commander_color_name))
-        print(' Keywords:', commander_card['keywords'], '+', COMMANDER_KEYWORDS)
-        print('     Text:', commander_text)
-        print('Combo exp:', commander_combos_regex)
+    compute_invalid_colors()
 
-        print('')
-        print('')
-        print('### Stats for this deck ###')
-        print('')
+    valid_colors = list(filter(filter_colors, cards))
+    valid_rules0 = list(filter(filter_all_at_once, valid_colors))
+    cards_ok = valid_rules0
 
-        # invalid colors
-        compute_invalid_colors()
-        prev_total_cards = total_cards
-        cards_valid_colors = list(filter(filter_colors, cards))
-        new_total_cards = len(cards_valid_colors)
-        print('Invalid colors', ','.join(list(map(lambda t: colorize_mana(t, no_braces = True),
-                                                  INVALID_COLORS))),
-              ':', prev_total_cards - new_total_cards)
-        print('')
+    print_deck_cards_stats(cards, valid_colors, valid_rules0, outformat = outformat)
 
-        # all filters
-        prev_total_cards = total_cards
-        cards_ok = list(filter(filter_all_at_once, cards))
-        total_cards_ok = len(cards_ok)
-        print('Filtered cards:', prev_total_cards - total_cards_ok)
-        print('')
-        print('Cards OK:', total_cards_ok)
-        print('')
+    display_deck_building_header(outformat = outformat)
 
-        # max price
-        no_price_eur_ok = len(list(filter(lambda c: not c['prices']['eur'], cards_ok)))
-        no_price_usd_ok = len(list(filter(lambda c: not c['prices']['usd'], cards_ok)))
-        max_price_eur_ok = max(map(lambda c: float(c['prices']['eur'] or 0), cards_ok))
-        max_price_usd_ok = max(map(lambda c: float(c['prices']['usd'] or 0), cards_ok))
-        print('No price EUR:', no_price_eur_ok)
-        print('No price USD:', no_price_usd_ok)
-        print('Price max EUR:', max_price_eur_ok)
-        print('Price max USD:', max_price_usd_ok)
-        print('')
+    commander_combos_no_filter = get_combos(combos, cards, name = COMMANDER_NAME, only_ok = False)
+    commander_combos = get_combos(combos, cards_ok, name = COMMANDER_NAME)
 
-        # no text
-        prev_total_cards = total_cards_ok
-        cards_with_text_ok = list(filter(filter_no_text, cards_ok))
-        new_total_cards = len(cards_with_text_ok)
-        print('Without text:', prev_total_cards - new_total_cards)
-        print('')
+    combos_rank_1, combos_rank_2 = assist_commander_combos(
+            commander_combos_no_filter, commander_combos, commander_combos_regex, combos, cards_ok,
+            outformat = outformat, outdir = args.outdir)
 
-        # no keywords
-        prev_total_cards = total_cards_ok
-        cards_with_keywords_ok = list(filter(filter_no_keywords, cards_ok))
-        new_total_cards = len(cards_with_keywords_ok)
-        print('Without keywords:', prev_total_cards - new_total_cards)
-        print('')
+    if USE_NX:
+        cards_excludes = (list(combos_rank_1.keys()) + list(combos_rank_2.keys()))
+        if outformat == 'html':
+            html = '  <section>'+'\n'
+            print(html)
+        assist_k_core_combos(combos, cards_ok, commander_combos_regex, 2, cards_excludes,
+                             outformat = outformat, outdir = args.outdir)
+        assist_k_core_combos(combos, cards_ok, commander_combos_regex, 3, cards_excludes,
+                             outformat = outformat, outdir = args.outdir)
+        if outformat == 'html':
+            html = '  </section>'+'\n'
+            print(html)
 
-        # no text and no keywords
-        prev_total_cards = total_cards_ok
-        cards_with_keywords_or_text_ok = list(
-                filter(lambda c: filter_no_keywords(c) or filter_no_text(c), cards_ok))
-        new_total_cards = len(cards_with_keywords_or_text_ok)
-        print('Without keywords and text:', prev_total_cards - new_total_cards)
+    # # one common keyword
+    # cards_common_keyword = list(
+    #     filter(lambda c: bool(commander_keywords & set(c['keywords'])), cards_ok))
+    # print('One common keyword', (commander_keywords if commander_keywords else ''), ':',
+    #         len(cards_common_keyword))
+    # print('')
+    # print_cards_list(cards_common_keyword, limit = args.max_list_items, indent = 5)
+    #
+    # # TODO use a regex to also include cards that have no keywords but a text that could match
+    # #      the keywords
+    # if COMMANDER_FEATURES_REGEXES:
+    #     commander_common_feature = []
+    #     for card in cards_ok:
+    #         oracle_texts = get_oracle_texts(card)
+    #         oracle_texts = list(map(
+    #             lambda t: t.replace(
+    #                 '(Damage dealt by this creature also causes you to gain that much life.)',
+    #                 ''),
+    #             oracle_texts))
+    #         oracle_texts_low = list(map(str.lower, oracle_texts))
+    #         for regexp in COMMANDER_FEATURES_REGEXES:
+    #             if list(search_strings(regexp, oracle_texts_low)):
+    #                 if (COMMANDER_FEATURES_EXCLUDE_REGEX == r'()'
+    #                     or not re.search(COMMANDER_FEATURES_EXCLUDE_REGEX,
+    #                                     join_oracle_texts(card))):
+    #                     commander_common_feature.append(card)
+    #                     break
+    #     print('Commander feature in common:', len(commander_common_feature))
+    #     print('')
+    #     commander_common_feature_organized = organize_by_type(commander_common_feature)
+    #     for card_type, cards_list in commander_common_feature_organized.items():
+    #         if cards_list:
+    #             print('   Commander feature in common ('+card_type+'):', len(cards_list))
+    #             print('')
+    #             for card in order_cards_by_cmc_and_name(cards_list):
+    #                 if card_type == 'unknown':
+    #                     print_card(card, print_powr_tough = False, indent = 5,
+    #                                 merge_type_powr_tough = False)
+    #                 else:
+    #                     print_card(card, print_powr_tough = (card_type == 'creature'),
+    #                                 print_type = False, indent = 5,
+    #                                 print_mana = (card_type not in ['land','stickers']))
+    #             print('')
+    #     print('')
+    #
+    # lands = list(filter(filter_lands, cards_ok))
+    # land_types_invalid = [COLOR_TO_LAND[c] for c in INVALID_COLORS]
+    # print('Land types not matching commander:', land_types_invalid)
+    # print('')
+    # land_types_invalid_regex = r'('+('|'.join(land_types_invalid)).lower()+')'
+    # assist_land_selection(lands, land_types_invalid_regex, max_list_items = args.max_list_items)
+    #
+    # # TODO select 5 ramp cards that are land related (search or play)
+    # cards_ramp_cards_land_fetch = assist_land_fetch(cards_ok, land_types_invalid_regex,
+    #                                                 max_list_items = args.max_list_items)
+    #
+    # # TODO select 5 multicolor ramp cards (artifacts ?)
+    # # TODO select 5 colorless ramp cards (artifacts ?)
+    # cards_ramp_cards = assist_ramp_cards(
+    #     [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
+    #     land_types_invalid_regex, max_list_items = args.max_list_items)
+    #
+    # # TODO select 10 draw cards
+    # cards_draw_cards = assist_draw_cards(
+    #     [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
+    #     land_types_invalid_regex, max_list_items = args.max_list_items)
+    #
+    # # with open('draw_cards.list.txt', 'r', encoding='utf-8') as f_draw_read:
+    # #     print('')
+    # #     print('Draw card missing')
+    # #     print('')
+    # #     for card_name in f_draw_read:
+    # #         card_name = card_name.strip()
+    # #         found = False
+    # #         card = None
+    # #         for c in cards_ok:
+    # #             if c['name'] == card_name and not filter_lands(c):
+    # #                 found = True
+    # #                 card = c
+    # #                 break
+    # #         # if not found:
+    # #         #     print('NOT PLAYABLE', card_name)
+    # #         no_print = False
+    # #         for c in cards_ramp_cards:
+    # #             if c['name'] == card_name:
+    # #                 # print('RAMP', card_name)
+    # #                 no_print = True
+    # #                 break
+    # #         for c in cards_ramp_cards_land_fetch:
+    # #             if c['name'] == card_name:
+    # #                 # print('FETCHER', card_name)
+    # #                 no_print = True
+    # #                 break
+    # #         for c in cards_draw_cards:
+    # #             if c['name'] == card_name:
+    # #                 # print('DRAW', card_name)
+    # #                 no_print = True
+    # #                 break
+    # #         if found and not no_print and card:
+    # #             print_card(card, trunc_text = False)
+    #
+    #
+    # # TODO select 7 tutors
+    # cards_tutor_cards = assist_tutor_cards(
+    #     [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
+    #     land_types_invalid_regex, max_list_items = args.max_list_items)
+    #
+    # # with open('tutor_cards.list.txt', 'r', encoding='utf-8') as f_tutor_read:
+    # #     print('')
+    # #     print('Tutor card missing')
+    # #     print('')
+    # #     for card_name in f_tutor_read:
+    # #         card_name = card_name.strip()
+    # #         found = False
+    # #         card = None
+    # #         for c in cards_ok:
+    # #             if c['name'] == card_name and not filter_lands(c):
+    # #                 found = True
+    # #                 card = c
+    # #                 break
+    # #         # if not found:
+    # #         #     print('NOT PLAYABLE', card_name)
+    # #         no_print = False
+    # #         for c in cards_ramp_cards:
+    # #             if c['name'] == card_name:
+    # #                 print('RAMP', card_name)
+    # #                 no_print = True
+    # #                 break
+    # #         for c in cards_ramp_cards_land_fetch:
+    # #             if c['name'] == card_name:
+    # #                 print('FETCHER', card_name)
+    # #                 no_print = True
+    # #                 break
+    # #         for c in cards_draw_cards:
+    # #             if c['name'] == card_name:
+    # #                 print('DRAW', card_name)
+    # #                 # no_print = True
+    # #                 break
+    # #         for c in cards_tutor_cards:
+    # #             if c['name'] == card_name:
+    # #                 # print('TUTOR', card_name)
+    # #                 no_print = True
+    # #                 break
+    # #         if found and not no_print and card:
+    # #             print_card(card, trunc_text = False)
+    #
+    # # TODO select 7 removal cards (3 creatures, 4 artifacts/enchantments)
+    # cards_removal = assist_removal_cards([
+    #     c for c in cards_ok if c not in cards_ramp_cards
+    #     and c not in cards_draw_cards and c not in cards_tutor_cards],
+    #                                         max_list_items = args.max_list_items)
+    #
+    # # best cards
+    # cards_best = assist_best_cards(cards_ok, max_list_items = args.max_list_items)
+    #
+    # # TODO select 3 board wipe cards
+    #
+    # # TODO select 1 graveyard hate
+    #
+    # # TODO select 1 'I win' suprise card
+    #
+    # # TODO for each turn N present a list of possible N-drop cards
 
-
-        print('')
-        print('')
-        print('### Deck building ###')
-        print('')
-
-
-        commander_combos = get_combos(combos, cards, name = COMMANDER_NAME, only_ok = False)
-        commander_combos_ok = get_combos(combos, cards_ok, name = COMMANDER_NAME)
-
-        print('Commander combos:', len(commander_combos))
-        print('')
-        print('Commander combos (OK):', len(commander_combos_ok))
-        print('')
-
-        commander_combos = commander_combos_ok
-        combos_rank_2 = {}
-
-        if commander_combos and commander_combos_regex:
-            if commander_combos_regex:
-
-                commander_combos = get_combos(combos, cards_ok, name = COMMANDER_NAME,
-                                              combo_res_regex = commander_combos_regex)
-                print('Commander combos filtered '+commander_combos_regex+':',
-                    len(commander_combos))
-                print('')
-
-            # rank 1
-            commander_combos_2_cards = {
-                k: v for k, v in commander_combos.items() if len(k) == 2}
-            commander_combos_3_cards = {
-                k: v for k, v in commander_combos.items() if len(k) == 3}
-            commander_combos_4_plus_cards = {
-                k: v for k, v in commander_combos.items() if len(k) > 3}
-
-            commander_combos_2_cards_order_cmc_total = list(sorted(
-                commander_combos_2_cards.items(), key=lambda t: t[1]['cmc_total']))
-            commander_combos_3_cards_order_cmc_total = list(sorted(
-                commander_combos_3_cards.items(), key=lambda t: t[1]['cmc_total']))
-            commander_combos_4_plus_cards_order_cmc_total = list(sorted(
-                commander_combos_4_plus_cards.items(), key=lambda t: t[1]['cmc_total']))
-
-            commander_combos_cards_names = set(filter(
-                lambda n: n != COMMANDER_NAME,
-                [name for names in commander_combos for name in names]))
-            commander_combos_2_cards_names = set(filter(
-                lambda n: n != COMMANDER_NAME,
-                [name for names in commander_combos_2_cards for name in names]))
-            commander_combos_3_cards_names = set(filter(
-                lambda n: n != COMMANDER_NAME,
-                [name for names in commander_combos_3_cards for name in names]))
-            commander_combos_4_plus_cards_names = set(filter(
-                lambda n: n != COMMANDER_NAME,
-                [name for names in commander_combos_4_plus_cards for name in names]))
-
-            print('    2 cards:', len(commander_combos_2_cards), 'combos,',
-                '+'+str(len(commander_combos_2_cards_names)), 'cards')
-            print('')
-            for index, tup_combo in enumerate(commander_combos_2_cards_order_cmc_total):
-                print_tup_combo(tup_combo, cards_ok, indent = 8, max_cards = 2,
-                                print_header = index == 0)
-            print('')
-            print('    3 cards:', len(commander_combos_3_cards), 'combos,',
-                '+'+str(len(commander_combos_3_cards_names)), 'cards')
-            print('')
-            for index, tup_combo in enumerate(commander_combos_3_cards_order_cmc_total):
-                print_tup_combo(tup_combo, cards_ok, indent = 8, max_cards = 3,
-                                print_header = index == 0)
-            print('')
-            print('   4+ cards:', len(commander_combos_4_plus_cards), 'combos,',
-                '+'+str(len(commander_combos_4_plus_cards_names)), 'cards')
-            print('')
-            for index, tup_combo in enumerate(commander_combos_4_plus_cards_order_cmc_total):
-                print_tup_combo(tup_combo, cards_ok, indent = 8, max_cards = 4,
-                                print_header = index == 0)
-            print('')
-
-            # rank 2
-            print('')
-            commander_combos_cards = []
-            for card_names in commander_combos:
-                for card_name in card_names:
-                    if card_name not in commander_combos_cards and card_name != COMMANDER_NAME:
-                        commander_combos_cards.append(card_name)
-            commander_combos_cards = tuple(sorted(commander_combos_cards))
-            combos_rank_2_excludes = list(map(lambda names: tuple(sorted(names)),
-                                              commander_combos.keys()))
-            # print('DEBUG rank 2 excludes:', len(combos_rank_2_excludes))
-            # print('')
-            # for names in combos_rank_2_excludes:
-            #     print('   ', names)
-            for card_name in commander_combos_cards:
-                print('DEBUG Searching for combos related to', card_name, '...', flush=True,
-                    file=sys.stderr)
-                card_combos = get_combos(combos, cards_ok, name = card_name,
-                                        combo_res_regex = commander_combos_regex,
-                                        excludes = combos_rank_2_excludes)
-                if card_combos:
-                    for c_cards, c_info in card_combos.items():
-                        if c_cards not in combos_rank_2:
-                            combos_rank_2[c_cards] = c_info
-            print('')
-
-            combos_rank_2_2_cards = {k: v for k, v in combos_rank_2.items() if len(k) == 2}
-            combos_rank_2_3_cards = {k: v for k, v in combos_rank_2.items() if len(k) == 3}
-            combos_rank_2_4_plus_cards = {k: v for k, v in combos_rank_2.items() if len(k) > 3}
-
-            combos_rank_2_2_cards_order_cmc_total = list(sorted(combos_rank_2_2_cards.items(),
-                                                                key=lambda t: t[1]['cmc_total']))
-            combos_rank_2_3_cards_order_cmc_total = list(sorted(combos_rank_2_3_cards.items(),
-                                                                key=lambda t: t[1]['cmc_total']))
-
-            combos_rank_2_2_cards_names = set(filter(
-                lambda n: n != COMMANDER_NAME and n not in commander_combos_cards_names,
-                [name for names in combos_rank_2_2_cards for name in names]))
-            combos_rank_2_3_cards_names = set(filter(
-                lambda n: n != COMMANDER_NAME and n not in commander_combos_cards_names,
-                [name for names in combos_rank_2_3_cards for name in names]))
-
-            print('Commander combos rank 2:', len(combos_rank_2))
-            print('')
-            print('    2 cards:', len(combos_rank_2_2_cards), 'combos,',
-                '+'+str(len(combos_rank_2_2_cards_names)), 'cards')
-            print('')
-            for index, tup_combo in enumerate(combos_rank_2_2_cards_order_cmc_total):
-                print_tup_combo(tup_combo, cards_ok, indent = 8, max_cards = 2,
-                                print_header = index == 0)
-            print('')
-            print('    3 cards:', len(combos_rank_2_3_cards), 'combos,',
-                '+'+str(len(combos_rank_2_3_cards_names)), 'cards')
-            print('')
-            for index, tup_combo in enumerate(combos_rank_2_3_cards_order_cmc_total):
-                print_tup_combo(tup_combo, cards_ok, indent = 8, max_cards = 3,
-                                print_header = index == 0)
-            print('')
-            print('   4+ cards:', len(combos_rank_2_4_plus_cards), 'combos')
-            print('')
-
-        if USE_NX:
-            cards_excludes = (list(commander_combos.keys()) + list(combos_rank_2.keys()))
-            assist_k_core_combos(combos, cards_ok, commander_combos_regex, 2, cards_excludes)
-            print('')
-            assist_k_core_combos(combos, cards_ok, commander_combos_regex, 3, cards_excludes)
-            print('')
-
-        # one common keyword
-        cards_common_keyword = list(
-            filter(lambda c: bool(commander_keywords & set(c['keywords'])), cards_ok))
-        print('One common keyword', (commander_keywords if commander_keywords else ''), ':',
-              len(cards_common_keyword))
-        print('')
-        print_cards_list(cards_common_keyword, limit = args.max_list_items, indent = 5)
-
-        # TODO use a regex to also include cards that have no keywords but a text that could match
-        #      the keywords
-        if COMMANDER_FEATURES_REGEXES:
-            commander_common_feature = []
-            for card in cards_ok:
-                oracle_texts = get_oracle_texts(card)
-                oracle_texts = list(map(
-                    lambda t: t.replace(
-                        '(Damage dealt by this creature also causes you to gain that much life.)',
-                        ''),
-                    oracle_texts))
-                oracle_texts_low = list(map(str.lower, oracle_texts))
-                for regexp in COMMANDER_FEATURES_REGEXES:
-                    if list(search_strings(regexp, oracle_texts_low)):
-                        if (COMMANDER_FEATURES_EXCLUDE_REGEX == r'()'
-                            or not re.search(COMMANDER_FEATURES_EXCLUDE_REGEX,
-                                            join_oracle_texts(card))):
-                            commander_common_feature.append(card)
-                            break
-            print('Commander feature in common:', len(commander_common_feature))
-            print('')
-            commander_common_feature_organized = organize_by_type(commander_common_feature)
-            for card_type, cards_list in commander_common_feature_organized.items():
-                if cards_list:
-                    print('   Commander feature in common ('+card_type+'):', len(cards_list))
-                    print('')
-                    for card in order_cards_by_cmc_and_name(cards_list):
-                        if card_type == 'unknown':
-                            print_card(card, print_powr_tough = False, indent = 5,
-                                       merge_type_powr_tough = False)
-                        else:
-                            print_card(card, print_powr_tough = (card_type == 'creature'),
-                                       print_type = False, indent = 5,
-                                       print_mana = (card_type not in ['land','stickers']))
-                    print('')
-            print('')
-
-        lands = list(filter(filter_lands, cards_ok))
-        land_types_invalid = [COLOR_TO_LAND[c] for c in INVALID_COLORS]
-        print('Land types not matching commander:', land_types_invalid)
-        print('')
-        land_types_invalid_regex = r'('+('|'.join(land_types_invalid)).lower()+')'
-        assist_land_selection(lands, land_types_invalid_regex, max_list_items = args.max_list_items)
-
-        # TODO select 5 ramp cards that are land related (search or play)
-        cards_ramp_cards_land_fetch = assist_land_fetch(cards_ok, land_types_invalid_regex,
-                                                        max_list_items = args.max_list_items)
-
-        # TODO select 5 multicolor ramp cards (artifacts ?)
-        # TODO select 5 colorless ramp cards (artifacts ?)
-        cards_ramp_cards = assist_ramp_cards(
-            [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
-            land_types_invalid_regex, max_list_items = args.max_list_items)
-
-        # TODO select 10 draw cards
-        cards_draw_cards = assist_draw_cards(
-            [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
-            land_types_invalid_regex, max_list_items = args.max_list_items)
-
-        # with open('draw_cards.list.txt', 'r', encoding='utf-8') as f_draw_read:
-        #     print('')
-        #     print('Draw card missing')
-        #     print('')
-        #     for card_name in f_draw_read:
-        #         card_name = card_name.strip()
-        #         found = False
-        #         card = None
-        #         for c in cards_ok:
-        #             if c['name'] == card_name and not filter_lands(c):
-        #                 found = True
-        #                 card = c
-        #                 break
-        #         # if not found:
-        #         #     print('NOT PLAYABLE', card_name)
-        #         no_print = False
-        #         for c in cards_ramp_cards:
-        #             if c['name'] == card_name:
-        #                 # print('RAMP', card_name)
-        #                 no_print = True
-        #                 break
-        #         for c in cards_ramp_cards_land_fetch:
-        #             if c['name'] == card_name:
-        #                 # print('FETCHER', card_name)
-        #                 no_print = True
-        #                 break
-        #         for c in cards_draw_cards:
-        #             if c['name'] == card_name:
-        #                 # print('DRAW', card_name)
-        #                 no_print = True
-        #                 break
-        #         if found and not no_print and card:
-        #             print_card(card, trunc_text = False)
-
-
-        # TODO select 7 tutors
-        cards_tutor_cards = assist_tutor_cards(
-            [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
-            land_types_invalid_regex, max_list_items = args.max_list_items)
-
-        # with open('tutor_cards.list.txt', 'r', encoding='utf-8') as f_tutor_read:
-        #     print('')
-        #     print('Tutor card missing')
-        #     print('')
-        #     for card_name in f_tutor_read:
-        #         card_name = card_name.strip()
-        #         found = False
-        #         card = None
-        #         for c in cards_ok:
-        #             if c['name'] == card_name and not filter_lands(c):
-        #                 found = True
-        #                 card = c
-        #                 break
-        #         # if not found:
-        #         #     print('NOT PLAYABLE', card_name)
-        #         no_print = False
-        #         for c in cards_ramp_cards:
-        #             if c['name'] == card_name:
-        #                 print('RAMP', card_name)
-        #                 no_print = True
-        #                 break
-        #         for c in cards_ramp_cards_land_fetch:
-        #             if c['name'] == card_name:
-        #                 print('FETCHER', card_name)
-        #                 no_print = True
-        #                 break
-        #         for c in cards_draw_cards:
-        #             if c['name'] == card_name:
-        #                 print('DRAW', card_name)
-        #                 # no_print = True
-        #                 break
-        #         for c in cards_tutor_cards:
-        #             if c['name'] == card_name:
-        #                 # print('TUTOR', card_name)
-        #                 no_print = True
-        #                 break
-        #         if found and not no_print and card:
-        #             print_card(card, trunc_text = False)
-
-        # TODO select 7 removal cards (3 creatures, 4 artifacts/enchantments)
-        cards_removal = assist_removal_cards([
-            c for c in cards_ok if c not in cards_ramp_cards
-            and c not in cards_draw_cards and c not in cards_tutor_cards],
-                                             max_list_items = args.max_list_items)
-
-        # best cards
-        cards_best = assist_best_cards(cards_ok, max_list_items = args.max_list_items)
-
-        # TODO select 3 board wipe cards
-
-        # TODO select 1 graveyard hate
-
-        # TODO select 1 'I win' suprise card
-
-        # TODO for each turn N present a list of possible N-drop cards
+    if args.html:
+        html = ''
+        html += '  <button class="action" onclick="generate_deck_list()">Generate deck list</button>'+'\n'
+        html += '  <div id="deck-list"></div>'+'\n'
+        html += '</body>'+'\n'
+        html += '</html>'
+        print(html)
 
 if __name__ == '__main__':
     try:
@@ -3157,5 +3556,5 @@ if __name__ == '__main__':
     except BrokenPipeError:
         pass
     except KeyboardInterrupt:
-        print('')
-        print('Ciao !')
+        print('', file=sys.stderr)
+        print('Ciao !', file=sys.stderr)
