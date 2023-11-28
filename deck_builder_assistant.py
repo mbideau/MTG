@@ -142,7 +142,6 @@ COLOR_TO_LAND = {
     'W': 'Plains',
     'U': 'Island',
     'B': 'Swamp'}
-COMMANDER_KEYWORDS = []
 DRAW_CARDS_REGEX = [
     r'(when|whenever|instead) [^.]+ (,|you [^.]+ (and )?)draw (a card|your)',
     'put (that card|one pile) into your hand',
@@ -640,16 +639,16 @@ def get_card_image(card, imgformat = 'small', outdir = '/tmp', update = False):
        update       bool    If 'True' force updating the image on local store
     """
     global LAST_SCRYFALL_CALL_TS_N
-    filename = (re.sub(r'[^A-Za-z_-]', '', card['name'])+imgformat+
+    filename = (re.sub(r'[^A-Za-z_-]', '', card['name'])+'--'+imgformat+
                 ('.jpg' if imgformat != 'png' else '.png'))
     filepath = pjoin(outdir, filename)
     filepathinfo = Path(filepath)
     imgurl = card['image_uris'][imgformat]
     if not filepathinfo.is_file() or update:
-        # delaying up to 200 millisecond like Scryfall API ask for fairness
+        # delaying up to 200 milliseconds like Scryfall API ask for fairness
         now_ts_n = monotonic_ns()
         while now_ts_n - LAST_SCRYFALL_CALL_TS_N < 200000:
-            print("DEBUG last scryfall call was less than 200 ms, sleeping 200 ms")
+            print("DEBUG last scryfall call was less than 200 ms, sleeping 200 ms", file=sys.stderr)
             sleep(0.2) # sleep 200 milliseconds
             now_ts_n = monotonic_ns()
         print("DEBUG Getting Scryfall card's image from '"+imgurl+"' ...", file=sys.stderr)
@@ -927,39 +926,35 @@ def print_all_cards_stats(cards, outformat = 'console'):
     if outformat == 'html':
         html = ''
         html += '  <section>'+'\n'
-        html += '    <article>'+'\n'
-        html += '      <details>'+'\n'
-        html += '        <summary>Stats: all cards</summary>'+'\n'
-        html += '        <dl>'+'\n'
-        html += '          <dt>Total cards</dt>'+'\n'
-        html += '          <dd>'+str(len(cards))+'</dd>'+'\n'
-        html += '          <dt>Empty cards</dt>'+'\n'
-        html += '          <dd>'+str(len(empty))+'</dd>'+'\n'
-        html += '          <dt>Illegal or banned</dt>'+'\n'
-        html += '          <dd>'+str(len(illegal))+'</dd>'+'\n'
-        html += '          <dt>XMage banned</dt>'+'\n'
-        html += '          <dd>'+str(len(xmage_banned))+'</dd>'+'\n'
-        html += '          <dt>Mythic or special</dt>'+'\n'
-        html += '          <dd>'+str(len(cards_mythic_or_special))+'</dd>'+'\n'
-        html += '          <dt>Without price EUR</dt>'+'\n'
-        html += '          <dd>'+str(len(without_price_eur))+'</dd>'+'\n'
-        html += '          <dt>Without price USD</dt>'+'\n'
-        html += '          <dd>'+str(len(without_price_usd))+'</dd>'+'\n'
-        html += '          <dt>Price max EUR</dt>'+'\n'
-        html += '          <dd>'+str(max_price_eur)+'</dd>'+'\n'
-        html += '          <dt>Price max USD</dt>'+'\n'
-        html += '          <dd>'+str(max_price_usd)+'</dd>'+'\n'
-        html += '          <dt>Price >100€ or >120$</dt>'+'\n'
-        html += '          <dd>'+str(len(price_below_100))+'</dd>'+'\n'
-        html += '          <dt>Without text</dt>'+'\n'
-        html += '          <dd>'+str(len(without_text))+'</dd>'+'\n'
-        html += '          <dt>Without keywords</dt>'+'\n'
-        html += '          <dd>'+str(len(without_keywords))+'</dd>'+'\n'
-        html += '          <dt>Without keywords and text</dt>'+'\n'
-        html += '          <dd>'+str(len(without_keywords_nor_text))+'</dd>'+'\n'
-        html += '        </dl>'+'\n'
-        html += '      </details>'+'\n'
-        html += '    </article>'+'\n'
+        html += '    <h3>Stats: all cards</h3>'+'\n'
+        html += '    <dl>'+'\n'
+        html += '      <dt>Total cards</dt>'+'\n'
+        html += '      <dd>'+str(len(cards))+'</dd>'+'\n'
+        html += '      <dt>Empty cards</dt>'+'\n'
+        html += '      <dd>'+str(len(empty))+'</dd>'+'\n'
+        html += '      <dt>Illegal or banned</dt>'+'\n'
+        html += '      <dd>'+str(len(illegal))+'</dd>'+'\n'
+        html += '      <dt>XMage banned</dt>'+'\n'
+        html += '      <dd>'+str(len(xmage_banned))+'</dd>'+'\n'
+        html += '      <dt>Mythic or special</dt>'+'\n'
+        html += '      <dd>'+str(len(cards_mythic_or_special))+'</dd>'+'\n'
+        html += '      <dt>Without price EUR</dt>'+'\n'
+        html += '      <dd>'+str(len(without_price_eur))+'</dd>'+'\n'
+        html += '      <dt>Without price USD</dt>'+'\n'
+        html += '      <dd>'+str(len(without_price_usd))+'</dd>'+'\n'
+        html += '      <dt>Price max EUR</dt>'+'\n'
+        html += '      <dd>'+str(max_price_eur)+'</dd>'+'\n'
+        html += '      <dt>Price max USD</dt>'+'\n'
+        html += '      <dd>'+str(max_price_usd)+'</dd>'+'\n'
+        html += '      <dt>Price >100€ or >120$</dt>'+'\n'
+        html += '      <dd>'+str(len(price_below_100))+'</dd>'+'\n'
+        html += '      <dt>Without text</dt>'+'\n'
+        html += '      <dd>'+str(len(without_text))+'</dd>'+'\n'
+        html += '      <dt>Without keywords</dt>'+'\n'
+        html += '      <dd>'+str(len(without_keywords))+'</dd>'+'\n'
+        html += '      <dt>Without keywords and text</dt>'+'\n'
+        html += '      <dd>'+str(len(without_keywords_nor_text))+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
         html += '  </section>'+'\n'
         print(html)
 
@@ -1005,21 +1000,17 @@ def print_deck_cards_stats(cards, valid_colors, valid_rules0, outformat = 'conso
     if outformat == 'html':
         html = ''
         html += '  <section>'+'\n'
-        html += '    <article>'+'\n'
-        html += '      <details>'+'\n'
-        html += "        <summary>Stats: deck's cards and rules 0</summary>"+'\n'
-        html += '        <dl>'+'\n'
-        html += '          <dt>Invalid colors</dt>'+'\n'
-        html += '          <dd>'+invalid_colors_colored+' ('+str(invalid_colors_len)+')'+'</dd>'+'\n'
-        html += '          <dt>Removed by rules 0</dt>'+'\n'
-        html += '          <dd>'+str(removed_by_rules0_len)+'</dd>'+'\n'
-        html += '          <dt>Price max EUR</dt>'+'\n'
-        html += '          <dd>'+str(max_price_eur)+'</dd>'+'\n'
-        html += '          <dt>Price max USD</dt>'+'\n'
-        html += '          <dd>'+str(max_price_usd)+'</dd>'+'\n'
-        html += '        </dl>'+'\n'
-        html += '      </details>'+'\n'
-        html += '    </article>'+'\n'
+        html += "    <h3>Stats: deck's cards and rules 0</h3>"+'\n'
+        html += '    <dl>'+'\n'
+        html += '      <dt>Invalid colors</dt>'+'\n'
+        html += '      <dd>'+invalid_colors_colored+' ('+str(invalid_colors_len)+')'+'</dd>'+'\n'
+        html += '      <dt>Removed by rules 0</dt>'+'\n'
+        html += '      <dd>'+str(removed_by_rules0_len)+'</dd>'+'\n'
+        html += '      <dt>Price max EUR</dt>'+'\n'
+        html += '      <dd>'+str(max_price_eur)+'</dd>'+'\n'
+        html += '      <dt>Price max USD</dt>'+'\n'
+        html += '      <dd>'+str(max_price_usd)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
         html += '  </section>'+'\n'
         print(html)
 
@@ -1036,7 +1027,8 @@ def print_deck_cards_stats(cards, valid_colors, valid_rules0, outformat = 'conso
         print('Price max USD:', max_price_usd)
         print('')
 
-def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None):
+def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None,
+                          outformat = 'console', outdir = '/tmp'):
     """Show pre-selected lands organised by features, for the user to select some"""
 
     # lands selection
@@ -1200,133 +1192,34 @@ def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None
         filter(filter_tapped_or_untappable, cards_lands_sacrifice_search))
     selected_lands += cards_lands_sacrifice_search_no_tapped
 
-    # nonbasic lands that are producers
-    cards_lands_producers_non_basic = list(filter(
-            lambda c: (
-                bool(list(search_strings(r'(\s+|\n|\r)?\{T\}: Add \{\w\}',
-                                            get_oracle_texts(c))))
-                and not bool(list(in_strings('roll a', map(str.lower, get_oracle_texts(c)))))
-                and not bool(list(in_strings('phased out', map(str.lower, get_oracle_texts(c)))))
-                and not bool(list(in_strings('venture into the dungeon',
-                                            map(str.lower, get_oracle_texts(c)))))),
-            filter(
-                lambda c: not c['type_line'].lower().startswith('basic land'),
-                [c for c in lands if c not in cards_lands_multicolors_generic_enough
-                and c not in cards_lands_converters
-                and c not in cards_lands_tricolors
-                and c not in cards_lands_bicolors
-                and c not in cards_lands_sacrifice_search])))
-    cards_lands_producers_non_basic_no_colorless = list(filter(
-        filter_add_one_colorless_mana, cards_lands_producers_non_basic))
-    cards_lands_producers_non_basic_colorless = [
-        c for c in cards_lands_producers_non_basic
-        if c not in cards_lands_producers_non_basic_no_colorless]
-    cards_lands_producers_non_basic_no_colorless_not_tapped = list(filter(
-        filter_tapped, cards_lands_producers_non_basic_no_colorless))
-    cards_lands_producers_non_basic_no_colorless_tapped = [
-        c for c in cards_lands_producers_non_basic_no_colorless
-        if c not in cards_lands_producers_non_basic_no_colorless_not_tapped]
-
-    # print land results
-    print('Multicolors lands generic enough (total):', len(cards_lands_multicolors_generic_enough))
-    print('')
-    print('Multicolors lands producers (total):', len(cards_lands_multicolors_producers))
-    print('')
-    # print('   Multicolors lands (not tapped, conditionnal):', len(cards_lands_multicolors_no_tapped))
-    # for card in cards_lands_multicolors_no_tapped:
-    #     print('      ', card['name'], ' ', join_oracle_texts(card))
-    # print('')
-    # print('   Multicolors lands (tapped):', len(cards_lands_multicolors_tapped))
-    # for card in cards_lands_multicolors_tapped:
-    #     print('      ', card['name'], ' ', join_oracle_texts(card))
-    # print('')
-    print('   Multicolors lands producers (not tapped, no sacrifice, no colorless mana):',
-            len(cards_lands_multicolors_filtered))
-    print_cards_list(cards_lands_multicolors_filtered, limit = max_list_items, indent = 5,
-                     print_mana = False, print_type = False, print_powr_tough = False)
-    print('')
-    print('   Multicolors lands producers (not tapped or untappable):',
-            len(cards_lands_multicolors_producers_not_tapped))
-    print('')
-    print('   Multicolors lands producers (not tapped or untappable, not selective):',
-            len(cards_lands_multicolors_producers_not_tapped_not_selective))
-    print_cards_list(cards_lands_multicolors_producers_not_tapped_not_selective,
-                     limit = max_list_items, indent = 5, print_mana = False, print_type = False,
-                     print_powr_tough = False)
-    print('')
-    print('   Multicolors lands producers (not tapped or untappable, selective):',
-            len(cards_lands_multicolors_producers_not_tapped_selective))
-    print_cards_list(cards_lands_multicolors_producers_not_tapped_selective, limit = max_list_items,
-                     indent = 5, print_mana = False, print_type = False, print_powr_tough = False)
-    print('')
-    print('   Multicolors lands producers (tapped):',
-            len(cards_lands_multicolors_producers_tapped))
-    print('')
-    print('   Multicolors lands producers (tapped, no color selection, no charge counter, no pay {1}):',
-            len(cards_lands_multicolors_producers_tapped_filtered))
-    print_cards_list(cards_lands_multicolors_producers_tapped_filtered, limit = max_list_items,
-                     indent = 5, print_mana = False, print_type = False, print_powr_tough = False)
-    print('')
-
-    print('Lands converters (total):', len(cards_lands_converters))
-    print('')
-    print('   Lands converters colorless producers (total):',
-            len(cards_lands_converters_colorless_producers))
-    print('')
-    print('   Lands converters colorless producers (not tapped or untappable):',
-            len(cards_lands_converters_colorless_producers_not_tapped))
-    print_cards_list(cards_lands_converters_colorless_producers_not_tapped, limit = max_list_items,
-                     indent = 5, print_mana = False, print_type = False, print_powr_tough = False)
-    print('')
-    print('   Lands converters colorless producers (tapped):',
-            len(cards_lands_converters_colorless_producers_tapped))
-    print_cards_list(cards_lands_converters_colorless_producers_tapped, limit = max_list_items,
-                     indent = 5, print_mana = False, print_type = False, print_powr_tough = False)
-    print('')
-
-    ### NOTE: I prefer artifacts for the job of converting mana,
-    ###       since their colorless mana will turn into a ramp, instead of a bad mana
-    # print('   Lands converters not producers (total):',
-    #       len(cards_lands_converters_no_producers))
-    # print('')
-    # print('   Lands converters not producers (not tapped or untappable):',
-    #       len(cards_lands_converters_no_producers_not_tapped))
-    # for card in cards_lands_converters_no_producers_not_tapped:
-    #     print('      ', card['name'], ' ', join_oracle_texts(card))
-    # print('')
-    # print('   Lands converters not producers (tapped):',
-    #       len(cards_lands_converters_no_producers_tapped))
-    # for card in cards_lands_converters_no_producers_tapped:
-    #     print('      ', card['name'], ' ', join_oracle_texts(card))
-    # print('')
+    # NOTE: not generic enought or not really usefull lands
+    # # nonbasic lands that are producers
+    # cards_lands_producers_non_basic = list(filter(
+    #         lambda c: (
+    #             bool(list(search_strings(r'(\s+|\n|\r)?\{T\}: Add \{\w\}',
+    #                                         get_oracle_texts(c))))
+    #             and not bool(list(in_strings('roll a', map(str.lower, get_oracle_texts(c)))))
+    #             and not bool(list(in_strings('phased out', map(str.lower, get_oracle_texts(c)))))
+    #             and not bool(list(in_strings('venture into the dungeon',
+    #                                         map(str.lower, get_oracle_texts(c)))))),
+    #         filter(
+    #             lambda c: not c['type_line'].lower().startswith('basic land'),
+    #             [c for c in lands if c not in cards_lands_multicolors_generic_enough
+    #             and c not in cards_lands_converters
+    #             and c not in cards_lands_tricolors
+    #             and c not in cards_lands_bicolors
+    #             and c not in cards_lands_sacrifice_search])))
+    # cards_lands_producers_non_basic_no_colorless = list(filter(
+    #     filter_add_one_colorless_mana, cards_lands_producers_non_basic))
+    # cards_lands_producers_non_basic_colorless = [
+    #     c for c in cards_lands_producers_non_basic
+    #     if c not in cards_lands_producers_non_basic_no_colorless]
+    # cards_lands_producers_non_basic_no_colorless_not_tapped = list(filter(
+    #     filter_tapped, cards_lands_producers_non_basic_no_colorless))
+    # cards_lands_producers_non_basic_no_colorless_tapped = [
+    #     c for c in cards_lands_producers_non_basic_no_colorless
+    #     if c not in cards_lands_producers_non_basic_no_colorless_not_tapped]
     #
-    # print('Tricolors lands:', len(cards_lands_tricolors))
-    # for card in cards_lands_tricolors:
-    #     print('   ', card['produced_mana'], ' ', card['name'], ' ', join_oracle_texts(card))
-    # print('')
-
-    print('Bicolors lands:', len(cards_lands_bicolors))
-    print('')
-    print('Bicolors lands (filtered):', len(cards_lands_bicolors_filtered))
-    print('')
-    print('Bicolors lands (filtered, not tapped or untappable):',
-            len(cards_lands_bicolors_filtered_not_tapped))
-    print_cards_list(cards_lands_bicolors_filtered_not_tapped, limit = max_list_items, indent = 5,
-                     print_mana = False, print_type = False, print_powr_tough = False)
-    print('')
-    print('Bicolors lands (filtered, tapped):',
-            len(cards_lands_bicolors_filtered_tapped))
-    # for card in cards_lands_bicolors_filtered_tapped:
-    #     print('   ', card['produced_mana'], ' ', card['name'], ' ', join_oracle_texts(card))
-    print('')
-
-    print('Sacrifice/Search lands:', len(cards_lands_sacrifice_search))
-    print('Sacrifice/Search lands (not tapped or untappable):',
-            len(cards_lands_sacrifice_search_no_tapped))
-    print_cards_list(cards_lands_sacrifice_search_no_tapped, limit = max_list_items, indent = 5,
-                     print_mana = False, print_type = False, print_powr_tough = False)
-    print('')
-
     # print('Lands producers of mana that are nonbasic:', len(cards_lands_producers_non_basic))
     # print('')
     # # NOTE: those fetchable lands are useless
@@ -1358,13 +1251,115 @@ def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None
     # print('')
     # print('')
 
+    land_stats_data = {
+        'Multicolors lands generic enough (total)': cards_lands_multicolors_generic_enough,
+        'Multicolors lands producers (total)': cards_lands_multicolors_producers,
+        'Multicolors lands producers (not tapped, no sacrifice, no colorless mana':
+            cards_lands_multicolors_filtered,
+        'Multicolors lands producers (not tapped or untappable)':
+            cards_lands_multicolors_producers_not_tapped,
+        'Multicolors lands producers (not tapped or untappable, not selective)':
+            cards_lands_multicolors_producers_not_tapped_not_selective,
+        'Multicolors lands producers (not tapped or untappable, selective)':
+            cards_lands_multicolors_producers_not_tapped_selective,
+        'Multicolors lands producers (tapped)': cards_lands_multicolors_producers_tapped,
+        'Multicolors lands producers (tapped, no color selection, no charge counter, no pay {1})':
+            cards_lands_multicolors_producers_tapped_filtered,
+        'Lands converters (total)': cards_lands_converters,
+        'Lands converters colorless producers (total)': cards_lands_converters_colorless_producers,
+        'Lands converters colorless producers (not tapped or untappable)':
+            cards_lands_converters_colorless_producers_not_tapped,
+        'Lands converters colorless producers (tapped)':
+            cards_lands_converters_colorless_producers_tapped,
+        # NOTE: I prefer artifacts for the job of converting mana,
+        #       since their colorless mana will turn into a ramp, instead of a bad mana
+        'Lands converters not producers (total)': cards_lands_converters_no_producers,
+        'Lands converters not producers (not tapped or untappable)':
+            cards_lands_converters_no_producers_not_tapped,
+        'Lands converters not producers (tapped)': cards_lands_converters_no_producers_tapped,
+        # NOTE: tricolors lands are always tapped, not so good then
+        'Tricolors lands (tapped)': cards_lands_tricolors,
+        'Bicolors lands': cards_lands_bicolors,
+        'Bicolors lands (filtered)': cards_lands_bicolors_filtered,
+        'Bicolors lands (filtered, not tapped or untappable)':
+            cards_lands_bicolors_filtered_not_tapped,
+        'Bicolors lands (filtered, tapped)': cards_lands_bicolors_filtered_tapped,
+        'Sacrifice/Search lands': cards_lands_sacrifice_search,
+        'Sacrifice/Search lands (not tapped or untappable)':
+            cards_lands_sacrifice_search_no_tapped,
+    }
+    land_output_data = {
+        'Multicolors lands producers': [
+            ('Multicolors lands producers (not tapped, no sacrifice, '
+             'no colorless mana', cards_lands_multicolors_filtered),
+            ('Multicolors lands producers (not tapped or untappable, not selective)',
+             cards_lands_multicolors_producers_not_tapped_not_selective),
+            ('Multicolors lands producers (not tapped or untappable, selective)',
+             cards_lands_multicolors_producers_not_tapped_selective),
+            ('Multicolors lands producers (tapped, no color selection, no charge counter, '
+             'no pay {1})', cards_lands_multicolors_producers_tapped_filtered)],
+        'Lands converters (mana fixers)': [
+            ('Lands converters colorless producers (not tapped or untappable)',
+             cards_lands_converters_colorless_producers_not_tapped),
+            ('Lands converters colorless producers (tapped)',
+             cards_lands_converters_colorless_producers_tapped)],
+        'Bicolors lands': [
+            ('Bicolors lands (filtered, not tapped or untappable)',
+             cards_lands_bicolors_filtered_not_tapped)],
+        'Sacrifice/Search lands': [
+            ('Sacrifice/Search lands (not tapped or untappable)',
+             cards_lands_sacrifice_search_no_tapped)]
+    }
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h4>Lands stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, cards_list in land_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(len(cards_list))+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in land_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for tup in data:
+                title = tup[0]+': '+str(len(tup[1]))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(tup[1], limit = max_list_items, indent = 5, print_mana = False,
+                                        print_type = False, print_powr_tough = False,
+                                        outformat = outformat, outdir = outdir, return_str = True)
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+
+        html += '  </section>'+'\n'
+
+        print(html)
+
+    if outformat == 'console':
+
+        for title, cards_list in land_stats_data.items():
+            print(title+':', len(cards_list))
+        print('')
+        print('')
+
+        for section, data in land_output_data.items():
+            print(section)
+            print('')
+            for tup in data:
+                print('   '+tup[0]+': '+str(len(tup[1])))
+                print('')
+                print_cards_list(tup[1], limit = max_list_items, indent = 5, print_mana = False,
+                                 print_type = False, print_powr_tough = False, outformat=outformat)
+
     # TODO select monocolor lands to match 37 lands cards (at the end)
     #      42 cards recommanded: @see https://www.channelfireball.com/article/What-s-an-Optimal-Mana-Curve-and-Land-Ramp-Count-for-Commander/e22caad1-b04b-4f8a-951b-a41e9f08da14/
     #      - 3 land for each 5 ramp cards
     #      - 2 land for each 5 draw cards
 
-
-def assist_land_fetch(cards, land_types_invalid_regex, max_list_items = None):
+def assist_land_fetch(cards, land_types_invalid_regex, max_list_items = None, outformat = 'console',
+                      outdir = '/tmp'):
     """Show pre-selected land fetchers organised by features, for the user to select some"""
 
     cards_ramp_cards_land_fetch = []
@@ -1390,17 +1385,17 @@ def assist_land_fetch(cards, land_types_invalid_regex, max_list_items = None):
 
     cards_ramp_cards_land_fetch_by_feature = {
         'to battlefield': [],
-        'to battlefield (conditional)': [],
+        'to battlefield, conditional': [],
         'to hand': [],
-        'to hand (conditional)': [],
+        'to hand, conditional': [],
         'to top of library': [],
-        'to top of library (conditional)': []}
+        'to top of library, conditional': []}
     for card in cards_ramp_cards_land_fetch:
         card_oracle_texts = list(get_oracle_texts(card))
         card_oracle_texts_low = list(map(str.lower, card_oracle_texts))
         conditional = (bool(list(in_strings('more lands', card_oracle_texts_low)))
                        or bool(list(in_strings('fewer lands', card_oracle_texts_low))))
-        cond_text = ' (conditional)' if conditional else ''
+        cond_text = ', conditional' if conditional else ''
         if list(search_strings(
                 r'puts? '
                 '(it|that card|one( of them)?|them|those cards|a card [^.]+|[^.]+ and the rest) '
@@ -1413,61 +1408,80 @@ def assist_land_fetch(cards, land_types_invalid_regex, max_list_items = None):
         elif list(search_strings('put (that card|them) on top', card_oracle_texts_low)):
             cards_ramp_cards_land_fetch_by_feature['to top of library'+cond_text].append(card)
         else:
-            print('UNKNOWN', print_card(card, return_str = True, trunc_text = False))
-
-    print('Land fetch (total):', len(cards_ramp_cards_land_fetch))
-    print('')
+            print('UNKNOWN land fetch categorie',
+                  print_card(card, return_str = True, trunc_text = False, outformat = 'console'),
+                  file=sys.stderr)
 
     for feature, cards_list in cards_ramp_cards_land_fetch_by_feature.items():
+        organized = {}
         if cards_list:
-            extra_text = 'RAMP CARDS ' if feature.startswith('to battlefield') else ''
-            print('   '+extra_text+'Land fetch ('+feature+'):', len(cards_list))
-            if ' (conditional)' in feature:
-                print('')
-                continue
-            land_cycling = []
-            channel = []
-            organized = {'creature': [], 'planeswalker': [], 'instant': [], 'sorcery': [],
-                         'enchantment': [], 'artifact': []}
             for card in cards_list:
                 if card['name'] in cards_ramp_cards_land_fetch_land_cycling:
-                    land_cycling.append(card)
+                    if 'land cycling' not in organized:
+                        organized['land cycling'] = []
+                    organized['land cycling'].append(card)
                 elif card['name'] in cards_ramp_cards_land_fetch_channel:
-                    channel.append(card)
+                    if 'channel' not in organized:
+                        organized['channel'] = []
+                    organized['channel'].append(card)
                 else:
-                    organized[get_card_type(card)].append(card)
+                    card_type = get_card_type(card)
+                    if card_type not in organized:
+                        organized[card_type] = []
+                    organized[card_type].append(card)
+        cards_ramp_cards_land_fetch_by_feature[feature] = organized
 
-            for card_type, sub_cards_list in organized.items():
-                organized[card_type] = order_cards_by_cmc_and_name(sub_cards_list)
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h4>Land fetchers stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        html += '      <dt>Land fetch (total)</dt>'+'\n'
+        html += '      <dd>'+str(len(cards_ramp_cards_land_fetch))+'</dd>'+'\n'
+        for feature, organized in cards_ramp_cards_land_fetch_by_feature.items():
+            for card_type, cards_list in organized.items():  # pylint: disable=no-member
+                extra_text = '(Ramp cards) ' if feature.startswith('to battlefield') else ''
+                title = extra_text+'Land fetch ('+feature+') '+card_type
+                html += '      <dt>'+title+'</dt>'+'\n'
+                html += '      <dd>'+str(len(cards_list))+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        html += '    <h4>Land fetchers by feature</h4>'+'\n'
+        for feature, organized in cards_ramp_cards_land_fetch_by_feature.items():
+            html += '      <h5>Land fetchers ('+feature+') by card type</h5>'+'\n'
+            for card_type, cards_list in organized.items():  # pylint: disable=no-member
+                extra_text = '(Ramp cards) ' if feature.startswith('to battlefield') else ''
+                title = extra_text+'Land fetch ('+card_type+')'+': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(order_cards_by_cmc_and_name(cards_list),
+                                        print_powr_tough = (card_type == 'creature'),
+                                        print_type = (feature not in ['land cycling', 'channel']),
+                                        indent = 8, limit = max_list_items,
+                                        print_mana = (card_type not in ['land', 'stickers']),
+                                        outformat = outformat, outdir = outdir, return_str = True)
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
 
-            for card_type, sub_cards_list in organized.items():
-                if sub_cards_list:
-                    print('      '+extra_text+'Land fetch '+feature+' ('+card_type+'):',
-                          len(sub_cards_list))
-                    item_count = 0
-                    for card in sub_cards_list:
-                        if card_type == 'unknown':
-                            print_card(card, print_powr_tough = False, indent = 8,
-                                       merge_type_powr_tough = False)
-                        else:
-                            print_card(card, print_powr_tough = (card_type == 'creature'),
-                                       print_type = False, indent = 8,
-                                       print_mana = (card_type not in ['land','stickers']))
-                        item_count += 1
-                        if max_list_items and item_count > max_list_items:
-                            print('{:>8}...'.format(''))
-                            break
+    if outformat == 'console':
+        print('Land fetch (total):', len(cards_ramp_cards_land_fetch))
+        print('')
+        for feature, organized in cards_ramp_cards_land_fetch_by_feature.items():
+            for card_type, cards_list in organized.items():  # pylint: disable=no-member
+                extra_text = '(Ramp cards) ' if feature.startswith('to battlefield') else ''
+                title = extra_text+'Land fetch ('+card_type+')'+': '+str(len(cards_list))
+                print('   '+title)
+                if ', conditional' in feature:
                     print('')
-            if land_cycling:
-                print('      Land fetch '+feature+' (land cycling):', len(land_cycling))
-                print_cards_list(order_cards_by_cmc_and_name(land_cycling),
-                                 limit = max_list_items, indent = 8)
-                print('')
-            if channel:
-                print('      Land fetch '+feature+' (channel):', len(channel))
-                print_cards_list(order_cards_by_cmc_and_name(channel),
-                                 limit = max_list_items, indent = 8)
-                print('')
+                    continue
+                print_cards_list(order_cards_by_cmc_and_name(cards_list),
+                                 print_powr_tough = (card_type == 'creature'),
+                                 print_type = (feature not in ['land cycling', 'channel']),
+                                 indent = 8, limit = max_list_items,
+                                 print_mana = (card_type not in ['land', 'stickers']),
+                                 outformat = outformat)
             print('')
 
     return cards_ramp_cards_land_fetch
@@ -1562,7 +1576,8 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
         html += '  <td class="input">'
         html += '<input type="checkbox" name="cards" value="'+card['name']+'"/></td>\n'
         if print_edhrank:
-            html += '  <td class="edhrank '+rank_price_color+'">'+str(card['edhrec_rank'])+'</td>\n'
+            edhrank_value = card['edhrec_rank'] if 'edhrec_rank' in card else ''
+            html += '  <td class="edhrank '+rank_price_color+'">'+str(edhrank_value)+'</td>\n'
         if print_price:
             price = (str(card['prices']['usd']) if 'prices' in card and 'usd' in card['prices']
                      and card['prices']['usd'] else '')
@@ -1588,13 +1603,19 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
                 html += '  <td class="type">'+typel+'</td>'+'\n'
 
         name = card['name']
-        imgpath, imgwidth, imgheight = get_card_image(card, imgformat = 'normal', outdir = outdir)
+        # imgpath, imgwidth, imgheight = get_card_image(card, imgformat = 'normal', outdir = outdir)
+        imgurl = ''
+        if 'image_uris' in card and 'normal' in card['image_uris']:
+            imgurl = card['image_uris']['normal']
+        elif ('card_faces' in card and card['card_faces'] and 'image_uris' in card['card_faces'][0]
+              and 'normal' in card['card_faces'][0]['image_uris']):
+            imgurl = card['card_faces'][0]['image_uris']['normal']
+        img_element = '<img src="'+imgurl+'" alt="image of card '+name+'" />'
+        if not imgurl:
+            img_element = '<span class="card-not-found">/<span>'
         name_and_link = ('<a class="'+get_card_colored(card)+'" href="#">'
                             +'<span class="name">'+name+'</span>'
-                            +'<span class="image">'
-                                +'<img src="'+imgpath+'" alt="image of card '+name+'" '
-                                +'height="'+str(imgheight)+'" width="'+str(imgwidth)+'"/>'
-                            +'</span>'
+                            +'<span class="image">'+img_element+'</span>'
                           +'</a>')
         html += '  <td class="name">'+name_and_link+'</td>'+'\n'
 
@@ -1710,7 +1731,8 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
 
     return line
 
-def assist_ramp_cards(cards, land_types_invalid_regex, max_list_items = None):
+def assist_ramp_cards(cards, land_types_invalid_regex, max_list_items = None, outformat = 'console',
+                      outdir = '/tmp'):
     """Show pre-selected ramp cards organised by features, for the user to select some"""
 
     cards_ramp_cards = []
@@ -1733,18 +1755,42 @@ def assist_ramp_cards(cards, land_types_invalid_regex, max_list_items = None):
                         cards_ramp_cards_by_features[feature].append(card)
                         cards_ramp_cards.append(card)
 
-    print('Ramp cards:', len(cards_ramp_cards))
-    print('')
-    for feature, ramp_cards in cards_ramp_cards_by_features.items():
-        ramp_cards_sorted = order_cards_by_cmc_and_name(ramp_cards)
-        print('Ramp cards ('+feature+'):', len(ramp_cards_sorted))
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h4>Ramp cards stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        html += '      <dt>Ramp cards (total)</dt>'+'\n'
+        html += '      <dd>'+str(len(cards_ramp_cards))+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        html += '    <h4>Ramp cards by feature</h4>'+'\n'
+        for feature, cards_list in cards_ramp_cards_by_features.items():
+            title = 'Ramp cards ('+feature+'): '+str(len(cards_list))
+            html += '    <article>'+'\n'
+            html += '      <details>'+'\n'
+            html += '        <summary>'+title+'</summary>'+'\n'
+            html += print_cards_list(order_cards_by_cmc_and_name(cards_list), indent = 5,
+                                     limit = max_list_items, outformat = outformat,
+                                     outdir = outdir, return_str = True)
+            html += '      </details>'+'\n'
+            html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        print('Ramp cards:', len(cards_ramp_cards))
         print('')
-        print_cards_list(ramp_cards_sorted, limit = max_list_items, indent = 3)
-        print('')
+        for feature, ramp_cards in cards_ramp_cards_by_features.items():
+            ramp_cards_sorted = order_cards_by_cmc_and_name(ramp_cards)
+            print('Ramp cards ('+feature+'):', len(ramp_cards_sorted))
+            print('')
+            print_cards_list(ramp_cards_sorted, limit = max_list_items, indent = 3)
+            print('')
 
     return cards_ramp_cards
 
-def assist_draw_cards(cards, land_types_invalid_regex, max_list_items = None):
+def assist_draw_cards(cards, land_types_invalid_regex, max_list_items = None, outformat = 'console',
+                      outdir = '/tmp'):
     """Show pre-selected draw cards organised by features, for the user to select some"""
 
     cards_draw_cards = []
@@ -1778,46 +1824,58 @@ def assist_draw_cards(cards, land_types_invalid_regex, max_list_items = None):
                         cards_draw_cards_multiple.append(card)
                     break
     cards_draw_cards = list(sorted(cards_draw_cards, key=lambda c: c['cmc']))
-    print('Draw cards:', len(cards_draw_cards))
-    print('')
 
     cards_draw_cards_not_repeating_cmc_3 = order_cards_by_cmc_and_name(list(filter(
         lambda c: int(c['cmc']) <= 3,
         [c for c in cards_draw_cards if c not in cards_draw_cards_repeating
          and c not in cards_draw_cards_multiple])))
 
-    connives = list(filter(lambda c: bool(list(in_strings('connives',
-                                                          map(str.lower, get_oracle_texts(c))))),
-                           cards))
+    connives = list(filter(lambda c: bool(list(
+        in_strings('connives', map(str.lower, get_oracle_texts(c))))), cards))
 
-    print('Draw cards (repeating):', len(cards_draw_cards_repeating))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_draw_cards_repeating),
-                     limit = max_list_items, indent = 3)
-    print('')
+    draw_output_data = {
+        'repeating': cards_draw_cards_repeating,
+        'multiple': cards_draw_cards_multiple,
+        'connives': connives,
+        'not repeating, CMC <= 3': cards_draw_cards_not_repeating_cmc_3}
 
-    print('Draw cards (multiple):', len(cards_draw_cards_multiple))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_draw_cards_multiple),
-                     limit = max_list_items, indent = 3)
-    print('')
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h4>Draw cards stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        html += '      <dt>Draw cards (total)</dt>'+'\n'
+        html += '      <dd>'+str(len(cards_draw_cards))+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        html += '    <h4>Draw cards by feature</h4>'+'\n'
+        for feature, cards_list in draw_output_data.items():
+            title = 'Draw cards ('+feature+'): '+str(len(cards_list))
+            html += '    <article>'+'\n'
+            html += '      <details>'+'\n'
+            html += '        <summary>'+title+'</summary>'+'\n'
+            html += print_cards_list(order_cards_by_cmc_and_name(cards_list), indent = 3,
+                                     limit = max_list_items, outformat = outformat,
+                                     outdir = outdir, return_str = True)
+            html += '      </details>'+'\n'
+            html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
 
-    print('Draw cards (connives):', len(connives))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(connives),
-                     limit = max_list_items, indent = 3)
-    print('')
-
-    print('Draw cards (not repeating, CMC <= 3):',
-          len(cards_draw_cards_not_repeating_cmc_3))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_draw_cards_not_repeating_cmc_3),
-                     limit = max_list_items, indent = 3)
-    print('')
+    if outformat == 'console':
+        print('Draw cards:', len(cards_draw_cards))
+        print('')
+        for feature, cards_list in draw_output_data.items():
+            title = 'Draw cards ('+feature+'): '+str(len(cards_list))
+            print(title)
+            print('')
+            print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                             indent = 3, outformat = outformat)
+        print('')
 
     return cards_draw_cards
 
-def assist_tutor_cards(cards, land_types_invalid_regex, max_list_items = None):
+def assist_tutor_cards(cards, land_types_invalid_regex, max_list_items = None,
+                       outformat = 'console', outdir = '/tmp'):
     """Show pre-selected tutor cards organised by features, for the user to select some"""
 
     cards_tutor_cards = []
@@ -1868,9 +1926,6 @@ def assist_tutor_cards(cards, land_types_invalid_regex, max_list_items = None):
     cards_tutor_cards_aura = list(filter(
         lambda c: list(in_strings_exclude('Aura', 'Auramancers', get_oracle_texts(c))),
         cards_tutor_cards_generic))
-    cards_tutor_cards_arcane = list(filter(
-        lambda c: list(in_strings('Arcane', get_oracle_texts(c))),
-        cards_tutor_cards_generic))
     cards_tutor_cards_equipment = list(filter(
         lambda c: list(in_strings('Equipment', get_oracle_texts(c))),
         cards_tutor_cards_generic))
@@ -1892,7 +1947,6 @@ def assist_tutor_cards(cards, land_types_invalid_regex, max_list_items = None):
     cards_tutor_cards_themed = (
             cards_tutor_cards_against
             + cards_tutor_cards_aura
-            + cards_tutor_cards_arcane
             + cards_tutor_cards_equipment
             + cards_tutor_cards_artifact
             + cards_tutor_cards_transmute
@@ -1915,64 +1969,76 @@ def assist_tutor_cards(cards, land_types_invalid_regex, max_list_items = None):
         c for c in cards_tutor_cards_not_themed if c not in cards_tutor_cards_to_battlefield
         and c not in cards_tutor_cards_to_hand and c not in cards_tutor_cards_to_top_library]
 
-    print('Tutor cards:', len(cards_tutor_cards))
-    print('')
-    print('   Tutor cards (not generic enough):',
-          len(cards_tutor_cards) - len(cards_tutor_cards_generic))
-    print('')
-    print('   Tutor cards (not themed):', len(cards_tutor_cards_not_themed))
-    print('')
-    print('      Tutor cards (not themed, to battlefield):', len(cards_tutor_cards_to_battlefield))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_tutor_cards_to_battlefield),
-                     limit = max_list_items, indent = 8)
-    print('')
-    print('      Tutor cards (not themed, to hand):', len(cards_tutor_cards_to_hand))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_tutor_cards_to_hand),
-                     limit = max_list_items, indent = 8)
-    print('')
-    print('      Tutor cards (not themed, to top of library):',
-          len(cards_tutor_cards_to_top_library))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_tutor_cards_to_top_library),
-                     limit = max_list_items, indent = 8)
-    print('')
-    print('      Tutor cards (not themed, other):', len(cards_tutor_cards_other))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_tutor_cards_other),
-                     limit = max_list_items, indent = 8)
-    print('')
+    tutor_stats_data = {
+        'Tutor cards': len(cards_tutor_cards),
+        'Tutor cards (not generic enough)':
+            len(cards_tutor_cards) - len(cards_tutor_cards_generic),
+        'Tutor cards (not themed)': len(cards_tutor_cards_not_themed),
+        'Tutor cards (not themed, to battlefield)': len(cards_tutor_cards_to_battlefield),
+        'Tutor cards (not themed, to hand)': len(cards_tutor_cards_to_hand),
+        'Tutor cards (not themed, to top of library)': len(cards_tutor_cards_to_top_library),
+        'Tutor cards (not themed, other)': len(cards_tutor_cards_other),
+        'Tutor cards (themed)': len(cards_tutor_cards_themed),
+        'Tutor cards (themed, against)': len(cards_tutor_cards_against),
+        'Tutor cards (themed, transmute)': len(cards_tutor_cards_transmute),
+        'Tutor cards (themed, artifact)': len(cards_tutor_cards_artifact),
+        'Tutor cards (themed, graveyard)': len(cards_tutor_cards_graveyard),
+        'Tutor cards (themed, Equipment)': len(cards_tutor_cards_equipment),
+        'Tutor cards (themed, Aura)': len(cards_tutor_cards_aura)}
 
-    print('   Tutor cards (themed):', len(cards_tutor_cards_themed))
-    print('')
-    print('      Tutor cards (themed, against):', len(cards_tutor_cards_against))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_tutor_cards_against),
-                     limit = max_list_items, indent = 8)
-    print('')
-    print('      Tutor cards (themed, transmute):', len(cards_tutor_cards_transmute))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_tutor_cards_transmute),
-                     limit = max_list_items, indent = 8)
-    print('')
-    print('      Tutor cards (themed, artifact):', len(cards_tutor_cards_artifact))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_tutor_cards_artifact),
-                     limit = max_list_items, indent = 8)
-    print('')
-    print('      Tutor cards (themed, graveyard):', len(cards_tutor_cards_graveyard))
-    print('')
-    print('      Tutor cards (themed, Equipment):', len(cards_tutor_cards_equipment))
-    print('')
-    print('      Tutor cards (themed, Aura):', len(cards_tutor_cards_aura))
-    print('')
-    print('      Tutor cards (themed, Arcane):', len(cards_tutor_cards_arcane))
-    print('')
+    tutor_output_data = {
+        'Tutor cards (not themed)': {
+            'Tutor cards (not themed, to battlefield)': cards_tutor_cards_to_battlefield,
+            'Tutor cards (not themed, to hand)': cards_tutor_cards_to_hand,
+            'Tutor cards (not themed, to top of library)': cards_tutor_cards_to_top_library,
+            'Tutor cards (not themed, other)': cards_tutor_cards_other},
+        'Tutor cards (themed)': {
+            'Tutor cards (themed, against)': cards_tutor_cards_against,
+            'Tutor cards (themed, transmute)': cards_tutor_cards_transmute,
+            'Tutor cards (themed, artifact)': cards_tutor_cards_artifact,
+            'Tutor cards (themed, graveyard)': cards_tutor_cards_graveyard,
+            'Tutor cards (themed, Equipment)': cards_tutor_cards_equipment,
+            'Tutor cards (themed, Aura)': cards_tutor_cards_aura}}
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h4>Tutor cards stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in tutor_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in tutor_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(order_cards_by_cmc_and_name(cards_list), indent = 8,
+                                         limit = max_list_items, outformat = outformat,
+                                         outdir = outdir, return_str = True)
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, count in tutor_stats_data.items():
+            print(title+':', count)
+        print('')
+        for section, data in tutor_output_data.items():
+            print(section)
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 8, outformat = outformat)
+        print('')
 
     return cards_tutor_cards
 
-def assist_removal_cards(cards, max_list_items = None):
+def assist_removal_cards(cards, max_list_items = None, outformat = 'console', outdir = '/tmp'):
     """Show pre-selected removal cards organised by features, for the user to select some"""
 
     cards_removal = []
@@ -2079,61 +2145,76 @@ def assist_removal_cards(cards, max_list_items = None):
         and c not in cards_removal_cmc_3_destroy_creature
         and c not in cards_removal_cmc_3_destroy_enchantment]
 
-    print('Removal cards:', len(cards_removal))
-    print('')
-    print('   Removal cards (CMC <= 3, not destroy land):',
-          len(cards_removal_cmc_3_not_destroy_land))
-    print('')
-    print('      Removal cards (CMC <= 3, destroy permanent):',
-          len(cards_removal_cmc_3_destroy_permanent))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_permanent),
-                     limit = max_list_items, indent = 8)
-    print('')
-    print('      Removal cards (CMC <= 3, destroy three choices):',
-          len(cards_removal_cmc_3_destroy_three))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_three),
-                     limit = max_list_items, indent = 8)
-    print('')
-    print('      Removal cards (CMC <= 3, destroy two choices):',
-          len(cards_removal_cmc_3_destroy_two))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_two),
-                     limit = max_list_items, indent = 8)
-    print('')
-    print('      Removal cards (CMC <= 3, destroy creature, sacrifice one):',
-          len(cards_removal_cmc_3_destroy_creature)
-          - len(cards_removal_cmc_3_destroy_creature_no_sacrifice))
-    print('')
-    print('      Removal cards (CMC <= 3, destroy creature, no exclusion):',
-          len(cards_removal_cmc_3_destroy_creature_no_exclusion))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_creature_no_exclusion),
-                     limit = max_list_items, indent = 8)
-    print('')
-    print('      Removal cards (CMC <= 3, destroy creature, exclusion):',
-          len(cards_removal_cmc_3_destroy_creature_exclusion))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_creature_exclusion),
-                     limit = max_list_items, indent = 8)
-    print('')
-    print('      Removal cards (CMC <= 3, destroy enchantments):',
-          len(cards_removal_cmc_3_destroy_enchantment))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_enchantment),
-                     limit = max_list_items, indent = 8)
-    print('')
-    print('      Removal cards (CMC <= 3, destroy other):',
-          len(cards_removal_cmc_3_destroy_other))
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(cards_removal_cmc_3_destroy_other),
-                     limit = max_list_items, indent = 8)
-    print('')
+    removal_stats_data = {
+        'Removal cards': len(cards_removal),
+        'Removal cards (CMC <= 3, not destroy land)': len(cards_removal_cmc_3_not_destroy_land),
+        'Removal cards (CMC <= 3, destroy permanent)': len(cards_removal_cmc_3_destroy_permanent),
+        'Removal cards (CMC <= 3, destroy three choices)': len(cards_removal_cmc_3_destroy_three),
+        'Removal cards (CMC <= 3, destroy two choices)': len(cards_removal_cmc_3_destroy_two),
+        'Removal cards (CMC <= 3, destroy creature, sacrifice one)':
+            len(cards_removal_cmc_3_destroy_creature)
+            - len(cards_removal_cmc_3_destroy_creature_no_sacrifice),
+        'Removal cards (CMC <= 3, destroy creature, no exclusion)':
+            len(cards_removal_cmc_3_destroy_creature_no_exclusion),
+        'Removal cards (CMC <= 3, destroy creature, exclusion)':
+            len(cards_removal_cmc_3_destroy_creature_exclusion),
+        'Removal cards (CMC <= 3, destroy enchantments)':
+            len(cards_removal_cmc_3_destroy_enchantment),
+        'Removal cards (CMC <= 3, destroy other)': len(cards_removal_cmc_3_destroy_other)}
+
+    removal_output_data = {
+        'Removal cards (CMC <= 3) choice in target': {
+            'Removal cards (CMC <= 3, destroy permanent)': cards_removal_cmc_3_destroy_permanent,
+            'Removal cards (CMC <= 3, destroy three choices)': cards_removal_cmc_3_destroy_three,
+            'Removal cards (CMC <= 3, destroy two choices)': cards_removal_cmc_3_destroy_two},
+        'Removal cards (CMC <= 3) specific target': {
+            'Removal cards (CMC <= 3, destroy creature, no exclusion)':
+                cards_removal_cmc_3_destroy_creature_no_exclusion,
+            'Removal cards (CMC <= 3, destroy creature, exclusion)':
+                cards_removal_cmc_3_destroy_creature_exclusion,
+            'Removal cards (CMC <= 3, destroy enchantments)':
+                cards_removal_cmc_3_destroy_enchantment,
+            'Removal cards (CMC <= 3, destroy other)': cards_removal_cmc_3_destroy_other}}
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h4>Removal cards stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in removal_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in removal_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(order_cards_by_cmc_and_name(cards_list), indent = 8,
+                                         limit = max_list_items, outformat = outformat,
+                                         outdir = outdir, return_str = True)
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, count in removal_stats_data.items():
+            print(title+':', count)
+        print('')
+        for section, data in removal_output_data.items():
+            print(section)
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 8, outformat = outformat)
+        print('')
 
     return cards_removal
 
-def assist_best_cards(cards, max_list_items = None):
+def assist_best_cards(cards, max_list_items = None, outformat = 'console', outdir = '/tmp'):
     """Show pre-selected best cards organised by features, for the user to select some"""
 
     best_cards = []
@@ -2159,16 +2240,6 @@ def assist_best_cards(cards, max_list_items = None):
                     power_to_cmc[ratio] = []
                 power_to_cmc[ratio].append(card)
     power_to_cmc = dict(sorted(power_to_cmc.items(), reverse = True))
-    print('Best Power to CMC ratio:')
-    print('')
-    min_ratio = 2
-    for ratio, cards_list in power_to_cmc.items():
-        if ratio <= min_ratio:
-            break
-        print('  ratio', ratio)
-        print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
-                         indent = 5)
-    print('')
 
     # Best creature toughness-to-cmc
     toughness_to_cmc = {}
@@ -2191,18 +2262,8 @@ def assist_best_cards(cards, max_list_items = None):
                     toughness_to_cmc[ratio] = []
                 toughness_to_cmc[ratio].append(card)
     toughness_to_cmc = dict(sorted(toughness_to_cmc.items(), reverse = True))
-    print('Best toughness to CMC ratio:')
-    print('')
-    min_ratio = 2
-    for ratio, cards_list in toughness_to_cmc.items():
-        if ratio <= min_ratio:
-            break
-        print('  ratio', ratio)
-        print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
-                         indent = 5)
-    print('')
 
-    # Best 5 creature power and toughness to cmc
+    # Best creature power and toughness to cmc
     powr_tough_to_cmc = {}
     for card in cards:
         if 'card_faces' in card:
@@ -2227,18 +2288,8 @@ def assist_best_cards(cards, max_list_items = None):
                     powr_tough_to_cmc[ratio] = []
                 powr_tough_to_cmc[ratio].append(card)
     powr_tough_to_cmc = dict(sorted(powr_tough_to_cmc.items(), reverse = True))
-    print('Best power+toughness to CMC ratio:')
-    print('')
-    min_ratio = 4
-    for ratio, cards_list in powr_tough_to_cmc.items():
-        if ratio <= min_ratio:
-            break
-        print('  ratio', ratio)
-        print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
-                         indent = 5)
-    print('')
 
-    # Best 5 creature amount of (evergreen?) keywords by cmc
+    # Best creature amount of (evergreen?) keywords by cmc
     keywords_to_cmc = {}
     for card in cards:
         if 'card_faces' in card:
@@ -2259,18 +2310,8 @@ def assist_best_cards(cards, max_list_items = None):
                     keywords_to_cmc[ratio] = []
                 keywords_to_cmc[ratio].append(card)
     keywords_to_cmc = dict(sorted(keywords_to_cmc.items(), reverse = True))
-    print('Best keywords count to CMC ratio:')
-    print('')
-    min_ratio = 1
-    for ratio, cards_list in keywords_to_cmc.items():
-        if ratio <= min_ratio:
-            break
-        print('  ratio', ratio)
-        print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
-                         indent = 5)
-    print('')
 
-    # Best ? creature with first|double strike and deathtouch (and flying?)
+    # Best creature with first|double strike and deathtouch (and flying?)
     deathtouch_strike = []
     for card in cards:
         if 'card_faces' in card:
@@ -2284,13 +2325,8 @@ def assist_best_cards(cards, max_list_items = None):
                     and ('Double strike' in card['keywords']
                             or 'First strike' in card['keywords'])):
                 deathtouch_strike.append(card)
-    print('Best Deathtouch + First strike/Double strike:')
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(deathtouch_strike), limit = max_list_items,
-                     indent = 5)
-    print('')
 
-    # Best 5 creature with flying and deathtouch
+    # Best creature with flying and deathtouch
     deathtouch_flying = []
     for card in cards:
         if 'card_faces' in card:
@@ -2302,13 +2338,8 @@ def assist_best_cards(cards, max_list_items = None):
             if ('keywords' in card and 'Deathtouch' in card['keywords']
                     and 'Flying' in card['keywords']):
                 deathtouch_flying.append(card)
-    print('Best Deathtouch + Flying:')
-    print('')
-    print_cards_list(order_cards_by_cmc_and_name(deathtouch_flying), limit = max_list_items,
-                     indent = 5)
-    print('')
 
-    # Best 5 creature with flying by power|toughness
+    # Best creature with flying by power|toughness
     flying_power_to_cmc = {}
     for card in cards:
         if 'card_faces' in card:
@@ -2331,16 +2362,6 @@ def assist_best_cards(cards, max_list_items = None):
                     flying_power_to_cmc[ratio] = []
                 flying_power_to_cmc[ratio].append(card)
     flying_power_to_cmc = dict(sorted(flying_power_to_cmc.items(), reverse = True))
-    print('Best Flying + Power to CMC ratio:')
-    print('')
-    min_ratio = 1.5
-    for ratio, cards_list in flying_power_to_cmc.items():
-        if ratio <= min_ratio:
-            break
-        print('  ratio', ratio)
-        print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
-                         indent = 5)
-    print('')
 
     flying_toughness_to_cmc = {}
     for card in cards:
@@ -2364,16 +2385,78 @@ def assist_best_cards(cards, max_list_items = None):
                     flying_toughness_to_cmc[ratio] = []
                 flying_toughness_to_cmc[ratio].append(card)
     flying_toughness_to_cmc = dict(sorted(flying_toughness_to_cmc.items(), reverse = True))
-    print('Best Flying + toughness to CMC ratio:')
-    print('')
-    min_ratio = 1.5
-    for ratio, cards_list in flying_toughness_to_cmc.items():
-        if ratio <= min_ratio:
-            break
-        print('  ratio', ratio)
-        print_cards_list(order_cards_by_cmc_and_name(cards_list), limit = max_list_items,
-                         indent = 5)
-    print('')
+
+
+    best_cards_output_data = {
+        'Best Power to CMC ratio': {
+            'min_ratio': 2,
+            'ratio:cards': power_to_cmc},
+        'Best toughness to CMC ratio': {
+            'min_ratio': 2,
+            'ratio:cards': toughness_to_cmc},
+        'Best power+toughness to CMC ratio': {
+            'min_ratio': 4,
+            'ratio:cards': powr_tough_to_cmc},
+        'Best keywords count to CMC ratio': {
+            'min_ratio': 1,
+            'ratio:cards': keywords_to_cmc},
+        'Best Deathtouch + First strike/Double strike': {
+            'cards': deathtouch_strike},
+        'Best Deathtouch + Flying': {
+            'cards': deathtouch_flying},
+        'Best Flying + Power to CMC ratio': {
+            'min_ratio': 1.5,
+            'ratio:cards': flying_power_to_cmc},
+        'Best Flying + toughness to CMC ratio': {
+            'min_ratio': 1.5,
+            'ratio:cards': flying_toughness_to_cmc},
+    }
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h4>Best cards</h4>'+'\n'
+        for title, data in best_cards_output_data.items():
+            html += '    <article>'+'\n'
+            html += '      <details>'+'\n'
+            html += '        <summary>'+title+'</summary>'+'\n'
+            if 'ratio:cards' in data:
+                min_ratio = data['min_ratio'] if 'min_ratio' in data else 0
+                for ratio, cards_list in data['ratio:cards'].items():
+                    if ratio <= min_ratio:
+                        break
+                    html += '      <h6>ratio '+str(ratio)+'</h6>'+'\n'
+                    html += print_cards_list(order_cards_by_cmc_and_name(cards_list),
+                                             limit=max_list_items, indent = 5,
+                                             outformat = outformat, outdir = outdir,
+                                             return_str = True)
+            if 'cards' in data:
+                html += print_cards_list(order_cards_by_cmc_and_name(data['cards']),
+                                         limit = max_list_items, indent = 5, outformat = outformat,
+                                         outdir = outdir, return_str = True)
+            html += '      </details>'+'\n'
+            html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, data in best_cards_output_data.items():
+            print(title)
+            print('')
+            if 'ratio:cards' in data:
+                min_ratio = data['min_ratio'] if 'min_ratio' in data else 0
+                for ratio, cards_list in data['ratio:cards'].items():
+                    if ratio <= min_ratio:
+                        break
+                    print('  ratio', ratio)
+                    print_cards_list(order_cards_by_cmc_and_name(cards_list), limit=max_list_items,
+                                    indent = 5, outformat = outformat)
+                print('')
+            if 'cards' in data:
+                print_cards_list(order_cards_by_cmc_and_name(data['cards']), limit = max_list_items,
+                                 indent = 5, outformat = outformat)
+                print('')
+        print('')
 
     # TODO evasion cards (except flying)
 
@@ -2404,32 +2487,36 @@ def print_tup_combo(tup_combo, cards, indent = 0, print_header = False, max_card
     if outformat == 'html':
         html = ''
         if print_header:
-            html += '        <tr>'+'\n'
-            html += '          <th>CMC total</th>'+'\n'
-            html += '          <th>CMC max</th>'+'\n'
-            html += '          <th>CMC min</th>'+'\n'
+            html += '        <tr class="header">'+'\n'
+            html += '          <th class="cmc-total">CMC total</th>'+'\n'
+            html += '          <th class="cmc-max">CMC max</th>'+'\n'
+            html += '          <th class="cmc-min">CMC min</th>'+'\n'
             for index in range(1, max_cards + 1):
-                html += '          <th>Card '+str(index)+'</th>'+'\n'
+                html += '          <th class="combo-card">Card '+str(index)+'</th>'+'\n'
             html += '        </tr>'+'\n'
 
-        html += '        <tr>'+'\n'
-        html += '          <td>'+str(int(tup_combo[1]['cmc_total']))+'</td>'+'\n'
-        html += '          <td>'+str(int(tup_combo[1]['cmc_max']))+'</td>'+'\n'
-        html += '          <td>'+str(int(tup_combo[1]['cmc_min']))+'</td>'+'\n'
+        html += '        <tr class="combo-line">'+'\n'
+        html += '          <td class="cmc-total">'+str(int(tup_combo[1]['cmc_total']))+'</td>'+'\n'
+        html += '          <td class="cmc-max">'+str(int(tup_combo[1]['cmc_max']))+'</td>'+'\n'
+        html += '          <td class="cmc-min">'+str(int(tup_combo[1]['cmc_min']))+'</td>'+'\n'
         for index, name in enumerate(tup_combo[0]):
             name_and_link = ''
             card = get_card(name, cards, strict = True)
-            imgpath, imgwidth, imgheight = get_card_image(card, imgformat = 'normal',
-                                                            outdir = outdir)
-            name_and_link = ('<a href="#">'
-                                +'<span class="name '+get_card_colored(card)+'">'
-                                    +name
-                                +'</span>'
-                                +'<span class="image">'
-                                    +'<img src="'+imgpath+'" alt="image of card '+name+'" '
-                                    +'height="'+str(imgheight)+'" width="'+str(imgwidth)+'"/>'
-                                +'</span>'
-                                +'</a>')
+            # imgpath, imgwidth, imgheight = get_card_image(card, imgformat = 'normal',
+            #                                               outdir = outdir)
+            imgurl = ''
+            if 'image_uris' in card and 'normal' in card['image_uris']:
+                imgurl = card['image_uris']['normal']
+            elif ('card_faces' in card and card['card_faces'] and 'image_uris' in card['card_faces'][0]
+                and 'normal' in card['card_faces'][0]['image_uris']):
+                imgurl = card['card_faces'][0]['image_uris']['normal']
+            img_element = '<img src="'+imgurl+'" alt="image of card '+name+'" />'
+            if not imgurl:
+                img_element = '<span class="card-not-found">/<span>'
+            name_and_link = ('<a class="'+get_card_colored(card)+'" href="#">'
+                                +'<span class="name">'+name+'</span>'
+                                +'<span class="image">'+img_element+'</span>'
+                             +'</a>')
             html += '          <td class="combo-card">'+name_and_link+'</td>'+'\n'
         if len(tup_combo[0]) < max_cards:
             for index in range(len(tup_combo[0]), max_cards):
@@ -2801,16 +2888,39 @@ def combo_effect_normalize(text):
     return (text.strip().lower().replace('near-infinite', 'infinite')
                                 .replace('card draw', 'draw').replace('draws', 'draw'))
 
-def print_cards_list(cards, limit = None, indent = 0, **kwargs):
+def print_cards_list(cards, limit = None, indent = 0, outformat = 'console', return_str = False,
+                     **kwargs):
     """Loop over a cards list and print each cards, limit the list to 'limit' items"""
+    ret = ''
     if cards:
+
+        if outformat == 'html':
+            ret = '      <table class="cards-list">'+'\n'
+
         item_count = 0
+        has_reach_limit = False
         for card in cards:
             item_count += 1
             if limit and item_count > limit:
-                print(('{:>'+str(indent)+'}...').format(''))
+                has_reach_limit = True
                 break
-            print_card(card, indent = indent, **kwargs)
+            ret += print_card(card, indent = indent, outformat = outformat, return_str = True,
+                              **kwargs)
+
+        if outformat == 'html':
+            ret += '      </table>'+'\n'
+
+        if has_reach_limit:
+            if outformat == 'html':
+                ret += '      <p class="truncated-symbol">...</p>'+'\n'
+
+            if outformat == 'console':
+                ret += ('{:>'+str(indent)+'}...').format('')
+
+    if not return_str:
+        print(ret)
+
+    return ret
 
 def display_html_header(title = 'MTG Deck Builder Assistant | made by Michael Bideau'):
     html = ''
@@ -2820,18 +2930,6 @@ def display_html_header(title = 'MTG Deck Builder Assistant | made by Michael Bi
     html += '  <meta charset="utf-8" />'+'\n'
     html += '  <title>'+title+'</title>'+'\n'
     html += '  <style>'+'\n'
-    html += '  .red, a.red { color: red; }'+'\n'
-    html += '  .blue, a.blue { color: blue; }'+'\n'
-    html += '  .gray, a.gray { color: gray; }'+'\n'
-    html += '  .yellow, a.yellow { color: burlywood; }'+'\n'
-    html += '  .light_green, a.light_green { color: green; }'+'\n'
-    html += '  .white, a.white { color: lightgrey; }'+'\n'
-    html += '  .magenta, a.magenta { color: magenta; }'+'\n'
-    html += '  .cyan, a.cyan { color: cyan; }'+'\n'
-    html += '  .light_gray, a.light_gray { color: silver; }'+'\n'
-    html += '  .light_yellow, a.light_yellow { color: darkkhaki; }'+'\n'
-    html += '  .light_blue, a.light_blue { color: lightblue; }'+'\n'
-    html += '  .dark_gray, a.dark_gray { color: dimgray; }'+'\n'
     html += '  body { padding: 0 10px 0;color: #444; }'+'\n'
     html += '  header h1 { margin-bottom: 0; }'+'\n'
     html += '  header .subtitle { margin-top: 5px; color: gray; font-size: 0.7em; }'+'\n'
@@ -2842,7 +2940,7 @@ def display_html_header(title = 'MTG Deck Builder Assistant | made by Michael Bi
     html += '  }'+'\n'
     html += '  dt {'+'\n'
     html += '    grid-column-start: 1;'+'\n'
-    html += '    font-size: 0.8em;'+'\n'
+    html += '    font-size: 0.9em;'+'\n'
     html += '    vertical-align: middle;'+'\n'
     html += '    color: gray;'+'\n'
     html += '  }'+'\n'
@@ -2860,11 +2958,12 @@ def display_html_header(title = 'MTG Deck Builder Assistant | made by Michael Bi
     html += '  details > * { margin-left: 20px; }'+'\n'
     html += '  details summary {'+'\n'
     html += '    margin: 16px 0 10px;'+'\n'
-    html += '    font-size: 1.2em;'+'\n'
-    html += '    font-weight: bold;'+'\n'
+    html += '    font-size: 1.1em;'+'\n'
+    html += '    font-weight: normal;'+'\n'
     html += '    background-color: #eee;'+'\n'
     html += '    padding: 10px;'+'\n'
     html += '    border-radius: 10px;'+'\n'
+    html += '    cursor: pointer;'+'\n'
     html += '  }'+'\n'
     html += '  details details summary {'+'\n'
     html += '    font-size: 1.2em;'+'\n'
@@ -2873,27 +2972,68 @@ def display_html_header(title = 'MTG Deck Builder Assistant | made by Michael Bi
     html += '  .commander-card .image { grid-column-start: 1; grid-column-end: 1; }'+'\n'
     html += '  .commander-card .image > img {  max-height: 400px; width: auto; }'+'\n'
     html += '  .commander-card .attributes { grid-column-start: 2; grid-column-end: 3; }'+'\n'
-    html += '  .card-line .name a, .combo-card a { position:relative; text-decoration: dotted; color: inherit; }'+'\n'
+    html += '  .combos-list th, .combos-list td { padding: 0 10px; text-align: center; }'+'\n'
+    html += '  .combos-list th { color: gray; }'+'\n'
+    html += '  .cards-list td { padding: 0 10px; text-align: right; }'+'\n'
+    html += '  .cards-list td.name { text-align: center; }'+'\n'
+    html += '  .cards-list td.name span.name { white-space: nowrap; }'+'\n'
+    html += '  .cards-list td.text { text-align: left; font-size: 0.9em; }'+'\n'
+    html += '  .card-line .name a, .combo-card a { position:relative; text-decoration: dotted; }'+'\n'
     html += '  .card-line .name a span.image, .combo-card a span.image { position:absolute; display:none; z-index:99; }'+'\n'
     html += '  .card-line .name a:hover span.image, .combo-card a:hover span.image { display:block; left: 100%; bottom: 100%; }'+'\n'
     html += '  .card-line .name a:hover span.image > img, .combo-card a:hover span.image > img { max-height: 400px; width: auto; }'+'\n'
+    # leeched from Scryfall CSS: begin
+    html += '  .card-not-found {'+'\n'
+    html += '    display: block;'+'\n'
+    html += '    pointer-events: none;'+'\n'
+    html += '    position: absolute;'+'\n'
+    html += '    z-index: 9000000;'+'\n'
+    html += '    background-image: -webkit-repeating-linear-gradient(145deg, #DDD, #DDD 5px, #CCC 5px, #CCC 10px);'+'\n'
+    html += '    background-image: -o-repeating-linear-gradient(145deg, #DDD, #DDD 5px, #CCC 5px, #CCC 10px);'+'\n'
+    html += '    background-image: repeating-linear-gradient(-55deg, #DDD, #DDD 5px, #CCC 5px, #CCC 10px);'+'\n'
+    html += '    -webkit-border-radius: 4.75% / 3.5%;'+'\n'
+    html += '    border-radius: 4.75% / 3.5%;'+'\n'
+    html += '    height: 340px !important;'+'\n'
+    html += '    width: 244px !important;'+'\n'
+    html += '    -webkit-box-orient: horizontal;'+'\n'
+    html += '    -webkit-box-direction: normal;'+'\n'
+    html += '    -webkit-flex-flow: row nowrap;'+'\n'
+    html += '    -ms-flex-flow: row nowrap;'+'\n'
+    html += '    flex-flow: row nowrap'+'\n'
+    html += '  }'+'\n'
+    # leeched from Scryfall CSS: end
     html += '  button.action {'+'\n'
-    html += '    font-size: 2em;'+'\n'
-    html += '    padding: 10px;'+'\n'
+    html += '    margin-top: 15px;'+'\n'
+    html += '    font-size: 1.8em;'+'\n'
+    html += '    padding: 10px 20px;'+'\n'
     html += '    background-color: lightgreen;'+'\n'
     html += '    border-radius: 10px;'+'\n'
     html += '  }'+'\n'
+    html += '  #deck-list { margin-left: 10px; }'+'\n'
+    html += '  .red, a.red { color: red; }'+'\n'
+    html += '  .blue, a.blue { color: blue; }'+'\n'
+    html += '  .gray, a.gray { color: gray; }'+'\n'
+    html += '  .yellow, a.yellow { color: burlywood; }'+'\n'
+    html += '  .light_green, a.light_green { color: green; }'+'\n'
+    html += '  .white, a.white { color: darkgrey; }'+'\n'
+    html += '  .magenta, a.magenta { color: magenta; }'+'\n'
+    html += '  .cyan, a.cyan { color: cyan; }'+'\n'
+    html += '  .light_gray, a.light_gray { color: silver; }'+'\n'
+    html += '  .light_yellow, a.light_yellow { color: darkkhaki; }'+'\n'
+    html += '  .light_blue, a.light_blue { color: lightblue; }'+'\n'
+    html += '  .dark_gray, a.dark_gray { color: dimgray; }'+'\n'
     html += '  </style>'+'\n'
     html += '  <script>'+'\n'
     html += '  function get_deck_list() {'+'\n'
     html += '    var checkedBoxes = document.querySelectorAll("input[name=cards]:checked");'+'\n'
     html += '    cards = [];'+'\n'
-    html += '    for (i = 0; i < checkedBoxes.length; i++) { cards.push(checkedBoxes[i].value); }'+'\n'
-    html += '    return cards;'+'\n'
+    html += '    for (i = 0; i < checkedBoxes.length; i++) { cards.push("1 "+checkedBoxes[i].value); }'+'\n'
+    html += '    return [...new Set(cards)];'+'\n'
     html += '  }'+'\n'
     html += '  function generate_deck_list() {'+'\n'
     html += '    var div = document.getElementById("deck-list");'+'\n'
-    html += '    div.innerHTML = "<p>"+get_deck_list().join("<br/>")+"</p>";'+'\n'
+    html += '    var commander = document.getElementById("commander-name");'+'\n'
+    html += '    div.innerHTML = "<p>"+get_deck_list().join("<br/>")+"<br/><br/>1 "+commander+"</p>";'+'\n'
     html += '  }'+'\n'
     html += '  </script>'+'\n'
     html += '</head>'+'\n'
@@ -2927,8 +3067,8 @@ def display_commander_card(card, commander_combos_regex, outformat = 'console', 
         html += '    </div>'+'\n'
         html += '    <div class="attributes">'+'\n'
         html += '      <dl>'+'\n'
-        html += '        <dt>Commander</dt>'+'\n'
-        html += '        <dd class="'+commander_color_name+'">'+card['name']+'</dd>'+'\n'
+        html += '        <dt>Name</dt>'+'\n'
+        html += '        <dd id="commander-name" class="'+commander_color_name+'">'+card['name']+'</dd>'+'\n'
         html += '        <dt>Identity</dt>'+'\n'
         html += '        <dd>'+','.join(list(map(lambda t: colorize_mana(t, no_braces = True),
                                                     card['color_identity'])))+'</dd>'+'\n'
@@ -3105,14 +3245,14 @@ def assist_commander_combos(commander_combos_no_filter, commander_combos, comman
         html += '    </dl>'+'\n'
 
         if c_combos_rank_1_x_cards:
-            html += '  <h3>Combos rank 1</h3>'+'\n'
+            html += '  <h3>Combos rank 1 <small>(directly tied to the commander)</small></h3>'+'\n'
 
             for count in range(2, 5):
                 key = '4+' if count == 4 else str(count)
 
                 html += '    <details>'+'\n'
                 html += '      <summary>'
-                html += ('rank 1 combos with '+key+' cards: '
+                html += ('Rank 1 combos with '+key+' cards: '
                          +str(len(c_combos_rank_1_x_cards[key]['combos']))+' combos,'
                          +'+'+str(len(c_combos_rank_1_x_cards[key]['cards names']))+' cards')
                 html += '</summary>'+'\n'
@@ -3132,14 +3272,14 @@ def assist_commander_combos(commander_combos_no_filter, commander_combos, comman
                 html += '    </details>'+'\n'
 
         if c_combos_rank_2_x_cards:
-            html += '  <h3>Combos rank 2</h3>'+'\n'
+            html += '  <h3>Combos rank 2 <small>(indirectly tied to the commander)</small></h3>\n'
 
             for count in range(2, 5):
                 key = '4+' if count == 4 else str(count)
 
                 html += '    <details>'+'\n'
                 html += '      <summary>'
-                html += ('rank 2 combos with '+key+' cards: '
+                html += ('Rank 2 combos with '+key+' cards: '
                          +str(len(c_combos_rank_2_x_cards[key]['combos']))+' combos,'
                          +'+'+str(len(c_combos_rank_2_x_cards[key]['cards names']))+' cards')
                 html += '</summary>'+'\n'
@@ -3209,6 +3349,99 @@ def assist_commander_combos(commander_combos_no_filter, commander_combos, comman
                             print('')
 
     return combos_rank_1, combos_rank_2
+
+def assist_commander_keywords_common(commander_card, cards, limit = None, outformat = 'console',
+                                     outdir = '/tmp'):
+    """TODO"""
+
+    commander_keywords = set(commander_card['keywords'])
+    cards_common_keyword = order_cards_by_cmc_and_name(list(
+        filter(lambda c: bool(commander_keywords & set(c['keywords'])), cards)))
+
+    if COMMANDER_FEATURES_REGEXES:
+        commander_common_feature = []
+        for card in cards:
+            oracle_texts = get_oracle_texts(card)
+            oracle_texts_low = list(map(str.lower, oracle_texts))
+            for regexp in COMMANDER_FEATURES_REGEXES:
+                if list(search_strings(regexp, oracle_texts_low)):
+                    if (COMMANDER_FEATURES_EXCLUDE_REGEX == r'()'
+                        or not re.search(COMMANDER_FEATURES_EXCLUDE_REGEX,
+                                         join_oracle_texts(card))):
+                        commander_common_feature.append(card)
+                        break
+
+        commander_common_feature_organized = organize_by_type(commander_common_feature)
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += "    <h3>Cards with a commander's keyword</h3>"+'\n'
+        html += '    <article>'+'\n'
+        html += '      <details>'+'\n'
+        html += "        <summary>Cards with a commander's keyword "
+        html += (('('+','.join(commander_keywords)+')') if commander_keywords else '')+': '
+        html += str(len(cards_common_keyword))+'</summary>'+'\n'
+        html += print_cards_list(cards_common_keyword, limit = limit, indent = 5,
+                                 outformat = outformat, outdir = outdir, return_str = True)
+        html += '      </details>'+'\n'
+        html += '    </article>'+'\n'
+
+        if COMMANDER_FEATURES_REGEXES:
+            html += '    <article>'+'\n'
+            html += '      <details>'+'\n'
+            html += '        <summary>Cards matching specified features: '
+            html += str(len(commander_common_feature))+'</summary>'+'\n'
+            for card_type, cards_list in commander_common_feature_organized.items():
+                if cards_list:
+                    html += '        <details>'+'\n'
+                    html += '          <summary>Commander feature in common ('+card_type+'): '
+                    html += str(len(cards_list))+'</summary>'+'\n'
+                    html += '          <table class="cards-list">'+'\n'
+                    for card in order_cards_by_cmc_and_name(cards_list):
+                        if card_type == 'unknown':
+                            html += print_card(card, print_powr_tough = False, indent = 5,
+                                               merge_type_powr_tough = False,
+                                               outformat = outformat, outdir = outdir,
+                                               return_str = True)
+                        else:
+                            html += print_card(card, print_powr_tough = (card_type == 'creature'),
+                                               print_type = False, indent = 5,
+                                               print_mana = (card_type not in ['land','stickers']),
+                                               outformat = outformat, outdir = outdir,
+                                               return_str = True)
+                    html += '          </table>'+'\n'
+                    html += '        </details>'+'\n'
+            html += '      </details>'+'\n'
+            html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        print('Cards with one common keyword', (commander_keywords if commander_keywords else ''),
+              ':', len(cards_common_keyword))
+        print('')
+        print_cards_list(cards_common_keyword, limit = limit, indent = 5, outformat = outformat)
+
+        if commander_common_feature:
+            print('Commander feature in common:', len(commander_common_feature))
+            print('')
+            for card_type, cards_list in commander_common_feature_organized.items():
+                if cards_list:
+                    print('   Commander feature in common ('+card_type+'):', len(cards_list))
+                    print('')
+                    for card in order_cards_by_cmc_and_name(cards_list):
+                        if card_type == 'unknown':
+                            print_card(card, print_powr_tough = False, indent = 5,
+                                       merge_type_powr_tough = False,
+                                       outformat = outformat)
+                        else:
+                            print_card(card, print_powr_tough = (card_type == 'creature'),
+                                       print_type = False, indent = 5,
+                                       print_mana = (card_type not in ['land','stickers']),
+                                       outformat = outformat)
+                    print('')
+            print('')
 
 def main():
     """Main program"""
@@ -3370,6 +3603,7 @@ def main():
         cards_excludes = (list(combos_rank_1.keys()) + list(combos_rank_2.keys()))
         if outformat == 'html':
             html = '  <section>'+'\n'
+            html += '    <h3>Combos k-core <small>(not tied to the commander)</small></h3>'+'\n'
             print(html)
         assist_k_core_combos(combos, cards_ok, commander_combos_regex, 2, cards_excludes,
                              outformat = outformat, outdir = args.outdir)
@@ -3379,171 +3613,132 @@ def main():
             html = '  </section>'+'\n'
             print(html)
 
-    # # one common keyword
-    # cards_common_keyword = list(
-    #     filter(lambda c: bool(commander_keywords & set(c['keywords'])), cards_ok))
-    # print('One common keyword', (commander_keywords if commander_keywords else ''), ':',
-    #         len(cards_common_keyword))
-    # print('')
-    # print_cards_list(cards_common_keyword, limit = args.max_list_items, indent = 5)
-    #
-    # # TODO use a regex to also include cards that have no keywords but a text that could match
-    # #      the keywords
-    # if COMMANDER_FEATURES_REGEXES:
-    #     commander_common_feature = []
-    #     for card in cards_ok:
-    #         oracle_texts = get_oracle_texts(card)
-    #         oracle_texts = list(map(
-    #             lambda t: t.replace(
-    #                 '(Damage dealt by this creature also causes you to gain that much life.)',
-    #                 ''),
-    #             oracle_texts))
-    #         oracle_texts_low = list(map(str.lower, oracle_texts))
-    #         for regexp in COMMANDER_FEATURES_REGEXES:
-    #             if list(search_strings(regexp, oracle_texts_low)):
-    #                 if (COMMANDER_FEATURES_EXCLUDE_REGEX == r'()'
-    #                     or not re.search(COMMANDER_FEATURES_EXCLUDE_REGEX,
-    #                                     join_oracle_texts(card))):
-    #                     commander_common_feature.append(card)
-    #                     break
-    #     print('Commander feature in common:', len(commander_common_feature))
-    #     print('')
-    #     commander_common_feature_organized = organize_by_type(commander_common_feature)
-    #     for card_type, cards_list in commander_common_feature_organized.items():
-    #         if cards_list:
-    #             print('   Commander feature in common ('+card_type+'):', len(cards_list))
-    #             print('')
-    #             for card in order_cards_by_cmc_and_name(cards_list):
-    #                 if card_type == 'unknown':
-    #                     print_card(card, print_powr_tough = False, indent = 5,
-    #                                 merge_type_powr_tough = False)
-    #                 else:
-    #                     print_card(card, print_powr_tough = (card_type == 'creature'),
-    #                                 print_type = False, indent = 5,
-    #                                 print_mana = (card_type not in ['land','stickers']))
-    #             print('')
-    #     print('')
-    #
-    # lands = list(filter(filter_lands, cards_ok))
-    # land_types_invalid = [COLOR_TO_LAND[c] for c in INVALID_COLORS]
+    # one common keyword
+    assist_commander_keywords_common(commander_card, cards_ok, limit = args.max_list_items,
+                                     outformat = outformat, outdir = args.outdir)
+
+    lands = list(filter(filter_lands, cards_ok))
+    land_types_invalid = [COLOR_TO_LAND[c] for c in INVALID_COLORS]
     # print('Land types not matching commander:', land_types_invalid)
     # print('')
-    # land_types_invalid_regex = r'('+('|'.join(land_types_invalid)).lower()+')'
-    # assist_land_selection(lands, land_types_invalid_regex, max_list_items = args.max_list_items)
-    #
-    # # TODO select 5 ramp cards that are land related (search or play)
-    # cards_ramp_cards_land_fetch = assist_land_fetch(cards_ok, land_types_invalid_regex,
-    #                                                 max_list_items = args.max_list_items)
-    #
-    # # TODO select 5 multicolor ramp cards (artifacts ?)
-    # # TODO select 5 colorless ramp cards (artifacts ?)
-    # cards_ramp_cards = assist_ramp_cards(
-    #     [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
-    #     land_types_invalid_regex, max_list_items = args.max_list_items)
-    #
-    # # TODO select 10 draw cards
-    # cards_draw_cards = assist_draw_cards(
-    #     [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
-    #     land_types_invalid_regex, max_list_items = args.max_list_items)
-    #
-    # # with open('draw_cards.list.txt', 'r', encoding='utf-8') as f_draw_read:
-    # #     print('')
-    # #     print('Draw card missing')
-    # #     print('')
-    # #     for card_name in f_draw_read:
-    # #         card_name = card_name.strip()
-    # #         found = False
-    # #         card = None
-    # #         for c in cards_ok:
-    # #             if c['name'] == card_name and not filter_lands(c):
-    # #                 found = True
-    # #                 card = c
-    # #                 break
-    # #         # if not found:
-    # #         #     print('NOT PLAYABLE', card_name)
-    # #         no_print = False
-    # #         for c in cards_ramp_cards:
-    # #             if c['name'] == card_name:
-    # #                 # print('RAMP', card_name)
-    # #                 no_print = True
-    # #                 break
-    # #         for c in cards_ramp_cards_land_fetch:
-    # #             if c['name'] == card_name:
-    # #                 # print('FETCHER', card_name)
-    # #                 no_print = True
-    # #                 break
-    # #         for c in cards_draw_cards:
-    # #             if c['name'] == card_name:
-    # #                 # print('DRAW', card_name)
-    # #                 no_print = True
-    # #                 break
-    # #         if found and not no_print and card:
-    # #             print_card(card, trunc_text = False)
-    #
-    #
-    # # TODO select 7 tutors
-    # cards_tutor_cards = assist_tutor_cards(
-    #     [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
-    #     land_types_invalid_regex, max_list_items = args.max_list_items)
-    #
-    # # with open('tutor_cards.list.txt', 'r', encoding='utf-8') as f_tutor_read:
-    # #     print('')
-    # #     print('Tutor card missing')
-    # #     print('')
-    # #     for card_name in f_tutor_read:
-    # #         card_name = card_name.strip()
-    # #         found = False
-    # #         card = None
-    # #         for c in cards_ok:
-    # #             if c['name'] == card_name and not filter_lands(c):
-    # #                 found = True
-    # #                 card = c
-    # #                 break
-    # #         # if not found:
-    # #         #     print('NOT PLAYABLE', card_name)
-    # #         no_print = False
-    # #         for c in cards_ramp_cards:
-    # #             if c['name'] == card_name:
-    # #                 print('RAMP', card_name)
-    # #                 no_print = True
-    # #                 break
-    # #         for c in cards_ramp_cards_land_fetch:
-    # #             if c['name'] == card_name:
-    # #                 print('FETCHER', card_name)
-    # #                 no_print = True
-    # #                 break
-    # #         for c in cards_draw_cards:
-    # #             if c['name'] == card_name:
-    # #                 print('DRAW', card_name)
-    # #                 # no_print = True
-    # #                 break
-    # #         for c in cards_tutor_cards:
-    # #             if c['name'] == card_name:
-    # #                 # print('TUTOR', card_name)
-    # #                 no_print = True
-    # #                 break
-    # #         if found and not no_print and card:
-    # #             print_card(card, trunc_text = False)
-    #
-    # # TODO select 7 removal cards (3 creatures, 4 artifacts/enchantments)
-    # cards_removal = assist_removal_cards([
-    #     c for c in cards_ok if c not in cards_ramp_cards
-    #     and c not in cards_draw_cards and c not in cards_tutor_cards],
-    #                                         max_list_items = args.max_list_items)
-    #
-    # # best cards
-    # cards_best = assist_best_cards(cards_ok, max_list_items = args.max_list_items)
-    #
-    # # TODO select 3 board wipe cards
-    #
-    # # TODO select 1 graveyard hate
-    #
-    # # TODO select 1 'I win' suprise card
-    #
-    # # TODO for each turn N present a list of possible N-drop cards
+    land_types_invalid_regex = r'('+('|'.join(land_types_invalid)).lower()+')'
+    assist_land_selection(lands, land_types_invalid_regex, max_list_items = args.max_list_items,
+                          outformat = outformat, outdir = args.outdir)
+
+    cards_ramp_cards_land_fetch = assist_land_fetch(
+        cards_ok, land_types_invalid_regex, max_list_items = args.max_list_items,
+        outformat = outformat, outdir = args.outdir)
+
+    cards_ramp_cards = assist_ramp_cards(
+        [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
+        land_types_invalid_regex, max_list_items = args.max_list_items,
+        outformat = outformat, outdir = args.outdir)
+
+    cards_draw_cards = assist_draw_cards(
+        [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
+        land_types_invalid_regex, max_list_items = args.max_list_items,
+        outformat = outformat, outdir = args.outdir)
+
+    # with open('draw_cards.list.txt', 'r', encoding='utf-8') as f_draw_read:
+    #     print('')
+    #     print('Draw card missing')
+    #     print('')
+    #     for card_name in f_draw_read:
+    #         card_name = card_name.strip()
+    #         found = False
+    #         card = None
+    #         for c in cards_ok:
+    #             if c['name'] == card_name and not filter_lands(c):
+    #                 found = True
+    #                 card = c
+    #                 break
+    #         # if not found:
+    #         #     print('NOT PLAYABLE', card_name)
+    #         no_print = False
+    #         for c in cards_ramp_cards:
+    #             if c['name'] == card_name:
+    #                 # print('RAMP', card_name)
+    #                 no_print = True
+    #                 break
+    #         for c in cards_ramp_cards_land_fetch:
+    #             if c['name'] == card_name:
+    #                 # print('FETCHER', card_name)
+    #                 no_print = True
+    #                 break
+    #         for c in cards_draw_cards:
+    #             if c['name'] == card_name:
+    #                 # print('DRAW', card_name)
+    #                 no_print = True
+    #                 break
+    #         if found and not no_print and card:
+    #             print_card(card, trunc_text = False)
+
+    cards_tutor_cards = assist_tutor_cards(
+        [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
+        land_types_invalid_regex, max_list_items = args.max_list_items,
+        outformat = outformat, outdir = args.outdir)
+
+    # with open('tutor_cards.list.txt', 'r', encoding='utf-8') as f_tutor_read:
+    #     print('')
+    #     print('Tutor card missing')
+    #     print('')
+    #     for card_name in f_tutor_read:
+    #         card_name = card_name.strip()
+    #         found = False
+    #         card = None
+    #         for c in cards_ok:
+    #             if c['name'] == card_name and not filter_lands(c):
+    #                 found = True
+    #                 card = c
+    #                 break
+    #         # if not found:
+    #         #     print('NOT PLAYABLE', card_name)
+    #         no_print = False
+    #         for c in cards_ramp_cards:
+    #             if c['name'] == card_name:
+    #                 print('RAMP', card_name)
+    #                 no_print = True
+    #                 break
+    #         for c in cards_ramp_cards_land_fetch:
+    #             if c['name'] == card_name:
+    #                 print('FETCHER', card_name)
+    #                 no_print = True
+    #                 break
+    #         for c in cards_draw_cards:
+    #             if c['name'] == card_name:
+    #                 print('DRAW', card_name)
+    #                 # no_print = True
+    #                 break
+    #         for c in cards_tutor_cards:
+    #             if c['name'] == card_name:
+    #                 # print('TUTOR', card_name)
+    #                 no_print = True
+    #                 break
+    #         if found and not no_print and card:
+    #             print_card(card, trunc_text = False)
+
+    cards_removal = assist_removal_cards(
+        [c for c in cards_ok if c not in cards_ramp_cards
+         and c not in cards_draw_cards and c not in cards_tutor_cards],
+        max_list_items = args.max_list_items, outformat = outformat, outdir = args.outdir)
+
+    # best cards
+    cards_best = assist_best_cards(
+        cards_ok, max_list_items = args.max_list_items, outformat = outformat, outdir = args.outdir)
+
+    # TODO select 3 board wipe cards
+
+    # TODO select 1 graveyard hate
+
+    # TODO select 1 'I win' suprise card
+
+    # TODO for each turn N present a list of possible N-drop cards
 
     if args.html:
         html = ''
+        # TODO display the number of cards in the deck, update it when a checkbox is checked or unchecked
+        # TODO instead of printing the deck, create a downloadable file for the user
+        # TODO move the button to the top bar (merge it with the title ?)
         html += '  <button class="action" onclick="generate_deck_list()">Generate deck list</button>'+'\n'
         html += '  <div id="deck-list"></div>'+'\n'
         html += '</body>'+'\n'
