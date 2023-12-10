@@ -175,17 +175,22 @@ TUTOR_GENERIC_EXCLUDE_REGEX = r'('+('|'.join([
     'vampire', 'rune', 'vehicle', 'demon', 'faerie', 'myr', 'merfolk', 'curse', 'ninja',
     'assembly-worker', 'spirit']))+')'
 REMOVAL_CARDS_REGEX = [
-    r'(destroy|remove|exile|put that card in the graveyard)'
+    r'(destroy|remove|exile|put that card in the graveyard)',
+    r"returns? .* to (its|their) owner('s|s') hand",
+    r"puts? .* on the bottom of (its|their) owner('s|s') library",
+    r"puts? .* on top of (its|their) owner('s|s') library",
+    r"puts? .* into (its|their) owner('s|s') library",
+    r"shuffles it into (its|their) library",
+    r"creatures? gets? [+-][0-9Xx]+/-[1-9Xx]+",
+    r"(target|each|every) (opponents?|players?) sacrifices? an?( attacking)? creature"
 ]
 REMOVAL_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
-    "exile target player's graveyard",
     'remove any number of [^.]*counter',
     'counters? removed this way',
     'remove (x|that many)? [^.]*counters',
     'exile [^.]+ you control',
     'exile this permanent',
-    r'return [^.+] card from your graveyard.* exile it',
-    "exile target card from defending player's graveyard",
+    r"(return|put)s? [^.]+ cards?(( each)? with (total )?(mana value|power) [0-9x]+( or less)?)? from (a|your|target player's) graveyard",
     'look at [^.]+ your library[, ].*exile (one|that card)',
     'rather than cast this card from your hand, pay [^.]+ and exile it',
     'remove [^.]+ from combat',
@@ -195,7 +200,7 @@ REMOVAL_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
     r'you may exile [^.]+\. If you do, return them',
     "exiles? [^.]+ (of|from) (your|a|their|target player's) (hand|graveyard|library)",
     'you may cast this card from exile',
-    'search [.^]+ library [^.]+ cards? and exile (it|them)',
+    'search [^.]+ library [^.]+ cards?(,| and) exile (it|them)', # TODO wrongly exclude Deicide and Wail of the Forgotten
     'if [^.]+ would die, exile it instead',
     'if [^.]+ would be put into your graveyard, exile it instead',
     "this effect doesn't remove",
@@ -204,7 +209,44 @@ REMOVAL_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
     'exile it instead of putting it into',
     r'destroy target \w+ you own',
     'when this spell card is put into a graveyard after resolving, exile it',
+    r"return .*you control.* to its owner's hand",
+    "when this creature dies or is put into exile from the battlefield, return it to its owner's hand",
+    r"creature gets -\d/-1 until end of turn\.",
+    'put one of them into your hand and the rest into your graveyard',
+    # 'exile it, then cast it transformed', # mess with Invasion of New Capenna
+    'if it has [^.]+ counters on it, remove all of them',
+    "put target card from a graveyard on the bottom of its owner's library",
+    'you own in exile',
+    # graveyard hate
+    'you may play lands and cast spells from your graveyard',
+    r'return [^.+] card from your graveyard.* exile it',
+    "exile target card from defending player's graveyard",
+    "exile target player's graveyard",
+    r"exiles? (up to \w+ )?target cards? from( (a|(target|that) player's)( single)?)? graveyard",
+    "if a nontoken creature would enter the battlefield and it wasn't cast, exile it instead",
+    "exile (all cards from )?(all|target player's) graveyard",
+    r"exile all creature cards (with mana value \d or less )?from (target player's|all) graveyard",
+    "if a permanent would be put into a graveyard, exile it instead",
+    'whenever another card is put into a graveyard from anywhere, exile that card',
 ]))+')'
+DISABLING_CARDS_REGEX = [
+    r"(activated abilities can't be activated|activated abilities of [^.]+ can't be activated)",
+    r"creature can't (block|attack( or block)?)",
+    r"(creature doesn't untap|if enchanted creature is untapped, tap it)",
+    r"creature phases out",
+    r"(base power and toughness \d/\d|enchanted \w+ (is|becomes) a )"]
+DISABLING_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
+    'toto'
+]))+')'
+COPY_CARDS_REGEX = [
+    '(copy|duplicate)']
+COPY_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
+    'copy this spell',
+    'whenever you (cast or )?copy',
+    'when you cast this spell, copy it',
+    "exile this card from your graveyard: create a token that's a copy of it",
+]))+')'
+
 WIPE_CARDS_REGEX = [
     r'((destroy|remove|exile) (all|every|each)|put (those( cards)?|them) in the graveyard)'
 ]
@@ -225,21 +267,56 @@ WIPE_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
     '[Dd]estroy all creatures that entered the battlefield this turn',
     '[Ee]xile (all|every|each) (nontoken )?creatures? you control',
     "[Ee]xile [Aa]ll [Hh]allow's [Ee]ve",
-    '[Ee]xile all ([Ww]arriors|[Zz]ombies)'
+    '[Ee]xile all ([Ww]arriors|[Zz]ombies)',
+    "[Ee]xile all creature cards from all graveyards",
 ]))+')'
-GRAVEYARD_HATE_CARDS_REGEX = [
-    "exile each opponent's graveyard",
-    "exile (all cards from )?(all|target player's) graveyard",
-    r"exile all creature cards (with mana value \d or less )?from (target player's) graveyard",
-    'exile all (the )?cards from your graveyard',
-    r"(remove|exile) (all|every|each) ((target )?(player|opponent)'s|(cards?|creatures?) "
-    r"(in|from) (all (players|opponents)|target (player|opponent)'s)) graveyard"]
+GRAVEYARD_HATE_CARDS_REGEX = {
+    'all cards': [
+        "exile each opponent's graveyard",
+        "exile (all cards from )?(all|target player's) graveyard",
+        r"exile all creature cards (with mana value \d or less )?from (target player's|all) graveyard",
+        'exile all (the )?cards from your graveyard',
+        r"(remove|exile) (all|every|each) ((target )?(player|opponent)'s|(cards?|creatures?) "
+        r"(in|from) (all (players|opponents)|target (player|opponent)'s)) graveyard",
+        'cards in graveyards lose all abilities',
+        'whenever another card is put into a graveyard from anywhere, exile that card',
+        "players can't cast spells from graveyards or libraries",
+        "creature cards in graveyards and libraries can't enter the battlefield",
+        'each opponent chooses two cards in their graveyard and exiles the rest'],
+    'some cards': [
+        r"exiles? (up to \w+ )?target cards? from( (a|(target|that) player's)( single)?)? graveyard",
+        'you may exile (a|target) creature card from a graveyard',
+        'exile target creature card from a graveyard',
+        "exile x target cards from target player's graveyard",
+        'target player exiles a card from their graveyard',
+        "if a nontoken creature would enter the battlefield and it wasn't cast, exile it instead",
+        "if a permanent would be put into a graveyard, exile it instead",
+        'exile target artifact card from a graveyard',
+        '(that player|target opponent) may exile a card from their graveyard',
+        'target opponent exiles a card from their graveyard']
+    }
 GRAVEYARD_HATE_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
     'toto'
 ]))+')'
-# TODO add more/better regex
 GRAVEYARD_RECURSION_CARDS_REGEX = [
-    'return (it|that card) to the battlefield']
+    'returns? (it|that card) to the battlefield',
+    r"(return|put)s? [^.]+ cards?(( each)? with (total )?(mana value|power) [0-9x]+( or less)?)? "
+        "from (a|your|target player's) graveyard (on)?to (the battlefield|(your|their|its owner's) "
+        "hand)",
+    "puts? [^.]+ cards? from (a|your|target player's) graveyard on top of (your|their) library",
+    'enchant creature card in a graveyard',
+    'choose an instant or sorcery card in your graveyard. you may cast it',
+    'you may play lands and cast spells from your graveyard',
+    'you may cast a permanent spell( with mana value 2 or less)? from your graveyard',
+    'you may cast target instant card from your graveyard',
+    'choose [^.]+ cards in your graveyard',
+    'leave the chosen cards in your graveyard and put the rest into your hand',
+    'exile a creature or planeswalker card from each graveyard',
+    "put target card from a graveyard on the top or bottom of its owner's library",
+    "if the top card of target player's graveyard is a creature card, put that card on top of "
+    "that player's library",
+    "put target creature card from a graveyard onto the battlefield",
+]
 GRAVEYARD_RECURSION_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
     "exile target attacking creature",
     "when [^.]+ dies, if it had no [^.]+ counters on it",
@@ -954,7 +1031,8 @@ def join_oracle_texts(card, truncate = False, colorize = True):
     texts_colorized = texts_truncated
     if colorize:
         texts_colorized = list(map(colorize_ability, texts_truncated))
-    texts_joined = ' // '.join(texts_colorized).replace('\n', '. ').replace('..', '.')
+    texts_joined = (' // '.join(texts_colorized).replace('\n', '. ').replace('..', '.')
+                          .replace('—.', '—').replace('. •', ' •'))
     return texts_joined
 
 def sort_cards_by_cmc_and_name(cards_list):
@@ -1633,7 +1711,8 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
         html += '        <tr class="card-line">'+'\n'
         html += '          <td class="input">'
         html += '<input type="checkbox" name="cards" value="'+card['name']+'" '
-        html += 'onchange="update_deck_list(this)"/></td>\n'
+        card_type = get_card_type(card)
+        html += 'onchange="update_deck_list(this, '+f"'{card_type}'"+')"/></td>\n'
         if print_edhrank:
             edhrank_value = card['edhrec_rank'] if 'edhrec_rank' in card else ''
             html += '          <td class="edhrank '+rank_price_color+'">'+str(edhrank_value)+'</td>\n'
@@ -1668,10 +1747,10 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
         elif ('card_faces' in card and card['card_faces'] and 'image_uris' in card['card_faces'][0]
               and 'normal' in card['card_faces'][0]['image_uris']):
             imgurl = card['card_faces'][0]['image_uris']['normal']
-        img_element = '<img src="'+imgurl+'" alt="image of card '+name+'" />'
+        img_element = '<img src="#" data-imgurl="'+imgurl+'" alt="image of card '+name+'" />'
         if not imgurl:
             img_element = '<span class="card-not-found">/<span>'
-        name_and_link = ('<a class="'+get_card_colored(card)+'" href="#">'
+        name_and_link = ('<a class="'+get_card_colored(card)+'" href="#" onmouseover="loadimg(this);">'
                             +'<span class="name">'+name+'</span>'
                             +'<span class="image">'+img_element+'</span>'
                           +'</a>')
@@ -2132,7 +2211,10 @@ def assist_removal_cards(cards, max_list_items = None, outformat = 'console'):
                           'and any additional costs. Then exile it.)', '')
                  .replace('Exile this Saga, then return it to the battlefield transformed', '')
                  .replace('Exile '+card['name'], '')  # pylint: disable=cell-var-from-loop
+                 .replace('Exile '+card['name']+'. Return it to the battlefield', '')  # pylint: disable=cell-var-from-loop
                  .replace('destroy '+card['name'], '')  # pylint: disable=cell-var-from-loop
+                 .replace('Return '+card['name']+" to its owner's hand", '')  # pylint: disable=cell-var-from-loop
+                 .replace('return '+card['name']+" to its owner's hand", '')  # pylint: disable=cell-var-from-loop
                  .replace('If '+card['name']+' would be put into a graveyard from anywhere, '+  # pylint: disable=cell-var-from-loop
                           'exile it instead.', '')),
                 oracle_texts))
@@ -2153,6 +2235,38 @@ def assist_removal_cards(cards, max_list_items = None, outformat = 'console'):
                     break
 
     cards_removal_cmc_3 = list(filter(lambda c: c['cmc'] <= 3, cards_removal))
+
+    cards_removal_cmc_3_return_to_hand = list(filter(
+        lambda c: bool(list(search_strings(r"returns? .* to (its|their) owner('s|s') hand",
+                                           list(map(str.lower, get_oracle_texts(c)))))),
+        cards_removal_cmc_3))
+
+    cards_removal_cmc_3_put_to_library_bottom = list(filter(
+        lambda c: bool(list(search_strings(
+            r"puts? .* on the bottom of (its|their) owner('s|s') library",
+            list(map(str.lower, get_oracle_texts(c)))))),
+        cards_removal_cmc_3))
+    cards_removal_cmc_3_put_to_library_top = list(filter(
+        lambda c: bool(list(search_strings(r"puts? .* on top of (its|their) owner('s|s') library",
+                                           list(map(str.lower, get_oracle_texts(c)))))),
+        cards_removal_cmc_3))
+    cards_removal_cmc_3_put_to_library_other = list(filter(
+        lambda c: bool(list(search_strings(
+            r"(puts? .* into (its|their) owner('s|s') library|shuffles it into (its|their) library)",
+            list(map(str.lower, get_oracle_texts(c)))))),
+        cards_removal_cmc_3))
+
+    cards_removal_cmc_3_untargetted = list(filter(
+        lambda c: bool(list(search_strings(
+            r"(target|each|every) (opponents?|players?) sacrifices? an?( attacking)? creature",
+            list(map(str.lower, get_oracle_texts(c)))))),
+        cards_removal_cmc_3))
+
+    cards_removal_cmc_3_creature_toughness_malus = list(filter(
+        lambda c: bool(list(search_strings(
+            r"creatures? gets? [+-][0-9Xx]+/-[1-9Xx]+",
+            list(map(str.lower, get_oracle_texts(c)))))),
+        cards_removal_cmc_3))
 
     cards_removal_cmc_3_destroy_land = list(filter(lambda c: bool(list(
         search_strings('destroy target (nonbasic )?land', map(str.lower, get_oracle_texts(c))))),
@@ -2229,7 +2343,18 @@ def assist_removal_cards(cards, max_list_items = None, outformat = 'console'):
             len(cards_removal_cmc_3_destroy_creature_exclusion),
         'Removal cards (CMC <= 3, destroy enchantments)':
             len(cards_removal_cmc_3_destroy_enchantment),
-        'Removal cards (CMC <= 3, destroy other)': len(cards_removal_cmc_3_destroy_other)}
+        'Removal cards (CMC <= 3, destroy other)': len(cards_removal_cmc_3_destroy_other),
+        'Removal cards (CMC <= 3, destroy untargetted)': len(cards_removal_cmc_3_untargetted),
+        'Removal cards (CMC <= 3, return to hand)': len(cards_removal_cmc_3_return_to_hand),
+        'Removal cards (CMC <= 3, put to library, bottom)':
+            len(cards_removal_cmc_3_put_to_library_bottom),
+        'Removal cards (CMC <= 3, put to library, top)':
+            len(cards_removal_cmc_3_put_to_library_top),
+        'Removal cards (CMC <= 3, put to library, other)':
+            len(cards_removal_cmc_3_put_to_library_other),
+        'Removal cards (CMC <= 3, creature, toughness malus)':
+            len(cards_removal_cmc_3_creature_toughness_malus),
+        }
 
     removal_output_data = {
         'Removal cards (CMC <= 3) choice in target': {
@@ -2243,7 +2368,21 @@ def assist_removal_cards(cards, max_list_items = None, outformat = 'console'):
                 cards_removal_cmc_3_destroy_creature_exclusion,
             'Removal cards (CMC <= 3, destroy enchantments)':
                 cards_removal_cmc_3_destroy_enchantment,
-            'Removal cards (CMC <= 3, destroy other)': cards_removal_cmc_3_destroy_other}}
+            'Removal cards (CMC <= 3, destroy other)': cards_removal_cmc_3_destroy_other},
+        'Removal cards (CMC <= 3, untargetted)': {
+            'Removal cards (CMC <= 3, untargetted)': cards_removal_cmc_3_untargetted},
+        'Removal cards (CMC <= 3, return to hand)': {
+            'Removal cards (CMC <= 3, return to hand)': cards_removal_cmc_3_return_to_hand},
+        'Removal cards (CMC <= 3, put to library)': {
+            'Removal cards (CMC <= 3, put to library, bottom)':
+                cards_removal_cmc_3_put_to_library_bottom,
+            'Removal cards (CMC <= 3, put to library, top)':
+                cards_removal_cmc_3_put_to_library_top,
+            'Removal cards (CMC <= 3, put to library, other)':
+                cards_removal_cmc_3_put_to_library_other},
+        'Removal cards (CMC <= 3, creature affection)': {
+            'Removal cards (CMC <= 3, creature, toughness malus)':
+                cards_removal_cmc_3_creature_toughness_malus}}
 
     cards_removal_cards_selected = []
     for data in removal_output_data.values():
@@ -2287,6 +2426,130 @@ def assist_removal_cards(cards, max_list_items = None, outformat = 'console'):
         print('')
 
     return cards_removal
+
+def assist_disabling_cards(cards, max_list_items = None, outformat = 'console'):
+    """Show pre-selected disabling cards organised by features, for the user to select some"""
+
+    cards_disabling = []
+    if DISABLING_CARDS_REGEX:
+        for card in cards:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_filtered = list(map(lambda t: (
+                t.replace("(This creature can't attack.)", '')
+                 .replace(card['name']+' becomes a Shapeshifter artifact creature '  # pylint: disable=cell-var-from-loop
+                          'with base power and toughness', '')),
+                oracle_texts))
+            if 'card_faces' in card:
+                for face in card['card_faces']:
+                    oracle_texts_filtered = list(map(lambda t: (
+                        t.replace("(This creature can't attack.)", '')
+                          .replace(face['name']+' becomes a Shapeshifter artifact creature'  # pylint: disable=cell-var-from-loop
+                                   ' with base power and toughness', '')),
+                        oracle_texts_filtered))
+            oracle_texts_low = list(map(str.lower, oracle_texts_filtered))
+            for regexp in DISABLING_CARDS_REGEX:
+                if (list(search_strings(regexp, oracle_texts_low))
+                        and not list(search_strings(DISABLING_CARDS_EXCLUDE_REGEX,
+                                                    oracle_texts_low))):
+                    cards_disabling.append(card)
+                    break
+
+    cards_disabling_cmc_3 = list(filter(lambda c: c['cmc'] <= 3, cards_disabling))
+
+    cards_disabling_cmc_3_creature_no_abilities = list(filter(
+        lambda c: bool(list(search_strings(
+            r"(activated abilities can't be activated|activated abilities of [^.]+ can't be activated)",
+            list(map(str.lower, get_oracle_texts(c)))))),
+        cards_disabling_cmc_3))
+
+    cards_disabling_cmc_3_creature_cant_attack_or_block = list(filter(
+        lambda c: bool(list(search_strings(
+            r"creature can't (block|attack( or block)?)",
+            list(map(str.lower, get_oracle_texts(c)))))),
+        cards_disabling_cmc_3))
+
+    cards_disabling_cmc_3_creature_tap = list(filter(
+        lambda c: bool(list(search_strings(
+            r"(creature doesn't untap|if enchanted creature is untapped, tap it)",
+            list(map(str.lower, get_oracle_texts(c)))))),
+        cards_disabling_cmc_3))
+
+    cards_disabling_cmc_3_creature_phaseout = list(filter(
+        lambda c: bool(list(search_strings(
+            r"creature phases out",
+            list(map(str.lower, get_oracle_texts(c)))))),
+        cards_disabling_cmc_3))
+
+    cards_disabling_cmc_3_creature_mutate = list(filter(
+        lambda c: bool(list(search_strings(
+            r"(base power and toughness \d/\d|enchanted \w+ (is|becomes) a )",
+            list(map(str.lower, get_oracle_texts(c)))))),
+        cards_disabling_cmc_3))
+
+    disabling_stats_data = {
+        'Disabling cards': len(cards_disabling),
+        'Disabling cards (CMC <= 3, creature, loses all abilities)':
+            len(cards_disabling_cmc_3_creature_no_abilities),
+        "Disabling cards (CMC <= 3, creature, can't attack or block)":
+            len(cards_disabling_cmc_3_creature_cant_attack_or_block),
+        'Disabling cards (CMC <= 3, creature, tap)': len(cards_disabling_cmc_3_creature_tap),
+        'Disabling cards (CMC <= 3, creature, phase out)':
+            len(cards_disabling_cmc_3_creature_phaseout),
+        'Disabling cards (CMC <= 3, creature, mutate)': len(cards_disabling_cmc_3_creature_mutate),
+        }
+
+    disabling_output_data = {
+        'Disabling cards (CMC <= 3, creature affection)': {
+            'Disabling cards (CMC <= 3, creature, loses all abilities)':
+                cards_disabling_cmc_3_creature_no_abilities,
+            "Disabling cards (CMC <= 3, creature, can't attack or block)":
+                cards_disabling_cmc_3_creature_cant_attack_or_block,
+            'Disabling cards (CMC <= 3, creature, tap)': cards_disabling_cmc_3_creature_tap,
+            'Disabling cards (CMC <= 3, creature, phase out)': cards_disabling_cmc_3_creature_phaseout,
+            'Disabling cards (CMC <= 3, creature, mutate)': cards_disabling_cmc_3_creature_mutate}}
+
+    cards_disabling_cards_selected = []
+    for data in disabling_output_data.values():
+        for cards_list in data.values():
+            cards_disabling_cards_selected += sort_cards_by_cmc_and_name(cards_list)[:max_list_items]
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h3 id="disabling-cards">Disabling cards</h3>\n'
+        html += '    <h4>Stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in disabling_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in disabling_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                         limit = max_list_items, outformat = outformat, return_str = True)
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, count in disabling_stats_data.items():
+            print(title+':', count)
+        print('')
+        for section, data in disabling_output_data.items():
+            print(section)
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 8, outformat = outformat)
+        print('')
+
+    return cards_disabling
 
 def assist_wipe_cards(cards, max_list_items = None, outformat = 'console'):
     """Show pre-selected board wipe cards organised by features, for the user to select some"""
@@ -2334,7 +2597,7 @@ def assist_wipe_cards(cards, max_list_items = None, outformat = 'console'):
 def assist_graveyard_recursion_cards(cards, max_list_items = None, outformat = 'console'):
     """Show pre-selected graveyard recursion cards organised by features, for the user to select some"""
 
-    cards_graveyard_recursion = []
+    cards_grav_recur = []
     if GRAVEYARD_RECURSION_CARDS_REGEX:
         for card in cards:
             oracle_texts = list(get_oracle_texts(card))
@@ -2343,79 +2606,186 @@ def assist_graveyard_recursion_cards(cards, max_list_items = None, outformat = '
                 if (list(search_strings(regexp, oracle_texts_low))
                         and not list(search_strings(GRAVEYARD_RECURSION_CARDS_EXCLUDE_REGEX,
                                                     oracle_texts_low))):
-                    cards_graveyard_recursion.append(card)
+                    cards_grav_recur.append(card)
                     break
 
-    cards_graveyard_recursion_sorted = sort_cards_by_cmc_and_name(cards_graveyard_recursion)
-    cards_graveyard_recursion_selected = cards_graveyard_recursion_sorted[:max_list_items]
+    cards_grav_recur_cmc_3 = list(filter(lambda c: c['cmc'] <= 3, cards_grav_recur))
+
+    cards_grav_recur_cmc_3_target_creature = list(filter(
+        lambda c: bool(list(in_strings('creature', list(map(str.lower, get_oracle_texts(c)))))),
+        cards_grav_recur_cmc_3))
+    cards_grav_recur_cmc_3_target_creature_battlefield = list(filter(
+        lambda c: bool(list(in_strings('battlefield', list(map(str.lower, get_oracle_texts(c)))))),
+        cards_grav_recur_cmc_3_target_creature))
+    cards_grav_recur_cmc_3_target_creature_hand = list(filter(
+        lambda c: bool(list(in_strings('hand', list(map(str.lower, get_oracle_texts(c)))))),
+        [c for c in cards_grav_recur_cmc_3_target_creature
+         if c not in cards_grav_recur_cmc_3_target_creature_battlefield]))
+    cards_grav_recur_cmc_3_target_creature_library = list(filter(
+        lambda c: bool(list(in_strings('library', list(map(str.lower, get_oracle_texts(c)))))),
+        [c for c in cards_grav_recur_cmc_3_target_creature
+         if c not in cards_grav_recur_cmc_3_target_creature_battlefield
+         and c not in cards_grav_recur_cmc_3_target_creature_hand]))
+
+    cards_grav_recur_cmc_3_target_artifact = list(filter(
+        lambda c: bool(list(in_strings('artifact', list(map(str.lower, get_oracle_texts(c)))))),
+        [c for c in cards_grav_recur_cmc_3 if c not in cards_grav_recur_cmc_3_target_creature]))
+
+    cards_grav_recur_cmc_3_target_instant_or_sorcery = list(filter(
+        lambda c: bool(list(search_strings('instant|sorcery', list(map(str.lower, get_oracle_texts(c)))))),
+        [c for c in cards_grav_recur_cmc_3 if c not in cards_grav_recur_cmc_3_target_creature
+         and c not in cards_grav_recur_cmc_3_target_artifact]))
+
+    cards_grav_recur_cmc_3_other = [
+        c for c in cards_grav_recur_cmc_3 if c not in cards_grav_recur_cmc_3_target_creature
+        and c not in cards_grav_recur_cmc_3_target_artifact
+        and c not in cards_grav_recur_cmc_3_target_instant_or_sorcery]
+
+    grav_recur_stats_data = {
+        'Graveyard recursion cards': len(cards_grav_recur),
+        'Graveyard recursion cards (CMC <= 3)': len(cards_grav_recur_cmc_3),
+        'Graveyard recursion cards (CMC <= 3, creatures)': len(cards_grav_recur_cmc_3_target_creature),
+        'Graveyard recursion cards (CMC <= 3, creatures, to battlefield)': len(cards_grav_recur_cmc_3_target_creature_battlefield),
+        'Graveyard recursion cards (CMC <= 3, creatures, to hand)': len(cards_grav_recur_cmc_3_target_creature_hand),
+        'Graveyard recursion cards (CMC <= 3, creatures, to library)': len(cards_grav_recur_cmc_3_target_creature_library),
+        'Graveyard recursion cards (CMC <= 3, artifacts)': len(cards_grav_recur_cmc_3_target_artifact),
+        'Graveyard recursion cards (CMC <= 3, instants or sorcery)': len(cards_grav_recur_cmc_3_target_instant_or_sorcery),
+        'Graveyard recursion cards (CMC <= 3, other)': len(cards_grav_recur_cmc_3_other),
+        }
+
+    grav_recur_output_data = {
+        'Graveyard recursion cards (CMC <= 3) by target': {
+            'Graveyard recursion cards (CMC <= 3, creatures, to battlefield)':
+                cards_grav_recur_cmc_3_target_creature_battlefield,
+            'Graveyard recursion cards (CMC <= 3, creatures, to hand)':
+                cards_grav_recur_cmc_3_target_creature_hand,
+            'Graveyard recursion cards (CMC <= 3, creatures, to library)':
+                cards_grav_recur_cmc_3_target_creature_library,
+            'Graveyard recursion cards (CMC <= 3, artifacts)':
+                cards_grav_recur_cmc_3_target_artifact,
+            'Graveyard recursion cards (CMC <= 3, instants or sorcery)':
+                cards_grav_recur_cmc_3_target_instant_or_sorcery,
+            'Graveyard recursion cards (CMC <= 3, other)':
+                cards_grav_recur_cmc_3_other}}
+
+    cards_grav_recur_cards_selected = []
+    for data in grav_recur_output_data.values():
+        for cards_list in data.values():
+            cards_grav_recur_cards_selected += sort_cards_by_cmc_and_name(cards_list)[:max_list_items]
 
     if outformat == 'html':
         html = ''
         html += '  <section>'+'\n'
         html += '    <h3 id="graveyard-recursion-cards">Graveyard recursion cards</h3>\n'
-        title = 'Graveyard recursion cards: '+str(len(cards_graveyard_recursion))
-        html += '    <article>'+'\n'
-        html += '      <details>'+'\n'
-        html += '        <summary>'+title+'</summary>'+'\n'
-        html += print_cards_list(cards_graveyard_recursion_sorted, limit = max_list_items,
-                                 outformat = outformat, return_str = True)
-        html += '      </details>'+'\n'
-        html += '    </article>'+'\n'
+        html += '    <h4>Stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in grav_recur_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in grav_recur_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                         limit = max_list_items, outformat = outformat, return_str = True)
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
         html += '  </section>'+'\n'
         print(html)
 
     if outformat == 'console':
-        title = 'Graveyard recursion cards: '+str(len(cards_graveyard_recursion))
-        print(title)
+        for title, count in grav_recur_stats_data.items():
+            print(title+':', count)
         print('')
-        print_cards_list(cards_graveyard_recursion_sorted, limit = max_list_items, indent = 8,
-                         outformat = outformat)
+        for section, data in grav_recur_output_data.items():
+            print(section)
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 8, outformat = outformat)
         print('')
 
-    return cards_graveyard_recursion_selected
+    return cards_grav_recur_cards_selected
 
 def assist_graveyard_hate_cards(cards, max_list_items = None, outformat = 'console'):
     """Show pre-selected graveyard hate cards organised by features, for the user to select some"""
 
-    cards_graveyard_hate = []
+    cards_grav_hate = {}
     if GRAVEYARD_HATE_CARDS_REGEX:
         for card in cards:
             oracle_texts = list(get_oracle_texts(card))
             oracle_texts_low = list(map(str.lower, oracle_texts))
-            for regexp in GRAVEYARD_HATE_CARDS_REGEX:
-                if (list(search_strings(regexp, oracle_texts_low))
-                        and not list(search_strings(GRAVEYARD_HATE_CARDS_EXCLUDE_REGEX,
-                                                    oracle_texts_low))):
-                    cards_graveyard_hate.append(card)
-                    break
+            for target, regexes in GRAVEYARD_HATE_CARDS_REGEX.items():
+                for regexp in regexes:
+                    if (list(search_strings(regexp, oracle_texts_low))
+                            and not list(search_strings(GRAVEYARD_HATE_CARDS_EXCLUDE_REGEX,
+                                                        oracle_texts_low))):
+                        if target not in cards_grav_hate:
+                            cards_grav_hate[target] = []
+                        cards_grav_hate[target].append(card)
+                        break
 
-    cards_graveyard_hate_sorted = sort_cards_by_cmc_and_name(cards_graveyard_hate)
-    cards_graveyard_hate_selected = cards_graveyard_hate_sorted[:max_list_items]
+    grav_hate_stats_data = {'Graveyard hate cards (total)': sum(map(len, cards_grav_hate.values()))}
+    grav_hate_output_data = {'Graveyard hate cards (CMC <= 3) by target': {}}
+    cards_grav_hate_keys = list(cards_grav_hate.keys())
+    for target in cards_grav_hate_keys:
+        cards_list = cards_grav_hate[target]
+        target_cmc3 = target+' (CMC <= 3)'
+        cards_grav_hate[target_cmc3] = list(filter(lambda c: c['cmc'] <= 3, cards_list))
+        title = 'Graveyard hate cards'
+        title_target = title + ' ('+target+')'
+        title_target_cmc3 = title + ' ('+target+', CMC <= 3)'
+        grav_hate_stats_data[title_target] = len(cards_list)
+        grav_hate_stats_data[title_target_cmc3] = len(cards_grav_hate[target_cmc3])
+        grav_hate_output_data['Graveyard hate cards (CMC <= 3) by target'][title_target_cmc3] = \
+            cards_grav_hate[target_cmc3]
+
+    cards_grav_hate_cards_selected = []
+    for data in grav_hate_output_data.values():
+        for cards_list in data.values():
+            cards_grav_hate_cards_selected += sort_cards_by_cmc_and_name(cards_list)[:max_list_items]
 
     if outformat == 'html':
         html = ''
         html += '  <section>'+'\n'
         html += '    <h3 id="graveyard-hate-cards">Graveyard hate cards</h3>\n'
-        title = 'Graveyard hate cards: '+str(len(cards_graveyard_hate))
-        html += '    <article>'+'\n'
-        html += '      <details>'+'\n'
-        html += '        <summary>'+title+'</summary>'+'\n'
-        html += print_cards_list(cards_graveyard_hate_sorted, limit = max_list_items,
-                                 outformat = outformat, return_str = True)
-        html += '      </details>'+'\n'
-        html += '    </article>'+'\n'
+        html += '    <h4>Stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in grav_hate_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in grav_hate_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                         limit = max_list_items, outformat = outformat, return_str = True)
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
         html += '  </section>'+'\n'
         print(html)
 
     if outformat == 'console':
-        title = 'Graveyard hate cards: '+str(len(cards_graveyard_hate))
-        print(title)
+        for title, count in grav_hate_stats_data.items():
+            print(title+':', count)
         print('')
-        print_cards_list(cards_graveyard_hate_sorted, limit = max_list_items, indent = 8,
-                         outformat = outformat)
+        for section, data in grav_hate_output_data.items():
+            print(section)
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 8, outformat = outformat)
         print('')
 
-    return cards_graveyard_hate_selected
+    return cards_grav_hate_cards_selected
 
 def assist_best_cards(cards, max_list_items = None, outformat = 'console'):
     """Show pre-selected best cards organised by features, for the user to select some"""
@@ -2589,6 +2959,40 @@ def assist_best_cards(cards, max_list_items = None, outformat = 'console'):
                 flying_toughness_to_cmc[ratio].append(card)
     flying_toughness_to_cmc = dict(sorted(flying_toughness_to_cmc.items(), reverse = True))
 
+    damage_to_cmc = {}
+    for card in cards:
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if ('type_line' in face and face['type_line'] in ['Instant', 'Sorcery']
+                        and 'oracle_text' in face and 'cmc' in face):
+                    damage = None
+                    matches = re.search('deals ([0-9x]+) damage', face['oracle_text'].lower())
+                    if matches and matches.group(1) != 'x':
+                        damage = float(matches.group(1))
+                    if not damage:
+                        continue
+                    cmc = float(face['cmc']) if float(face['cmc']) > 1 else 1.0
+                    ratio = round(damage / cmc, 3)
+                    if ratio not in damage_to_cmc:
+                        damage_to_cmc[ratio] = []
+                    damage_to_cmc[ratio].append(card)
+        else:
+            if ('type_line' in card and card['type_line'] in ['Instant', 'Sorcery']
+                    and 'oracle_text' in card and 'cmc' in card):
+                damage = None
+                matches = re.search('deals ([0-9x]+) damage', card['oracle_text'].lower())
+                if matches and matches.group(1) != 'x':
+                    damage = float(matches.group(1))
+                if not damage:
+                    continue
+                cmc = float(card['cmc']) if float(card['cmc']) > 1 else 1.0
+                ratio = round(damage / cmc, 3)
+                if ratio not in damage_to_cmc:
+                    damage_to_cmc[ratio] = []
+                damage_to_cmc[ratio].append(card)
+    damage_to_cmc = dict(sorted(damage_to_cmc.items(), reverse = True))
+
+    # TODO Best 5 instant|sorcery wide damage to cmc
 
     best_cards_output_data = {
         'Best Power to CMC ratio': {
@@ -2613,6 +3017,9 @@ def assist_best_cards(cards, max_list_items = None, outformat = 'console'):
         'Best Flying + toughness to CMC ratio': {
             'min_ratio': 1.5,
             'ratio:cards': flying_toughness_to_cmc},
+        'Best damage to CMC ratio': {
+            'min_ratio': 1.01,
+            'ratio:cards': damage_to_cmc},
     }
 
     if outformat == 'html':
@@ -2662,14 +3069,130 @@ def assist_best_cards(cards, max_list_items = None, outformat = 'console'):
 
     # TODO evasion cards (except flying)
 
-    # TODO Best 5 instant|sorcery damage to cmc
-
-    # TODO Best 5 instant|sorcery wide damage to cmc
-
-    # TODO Best 5 copy card
-
     # TODO only return showed/selected cards (like other assist methods)
     return best_cards
+
+def assist_copy_cards(cards, max_list_items = None, outformat = 'console'):
+    """Show pre-selected copy cards organised by features, for the user to select some"""
+
+    cards_copy = []
+    if COPY_CARDS_REGEX:
+        for card in cards:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_filtered = list(map(lambda t: (
+                t.replace("its controller may cast a copy of the encoded card without paying its mana cost", '')
+                 .replace("(Create a token that's a copy of a creature token you control.)", '')
+                 .replace('copy it and you may choose a new target for the copy', '')
+                 .replace("create a token that's a copy of this creature that's tapped and attacking that player", '')),
+                oracle_texts))
+            if 'card_faces' in card:
+                for face in card['card_faces']:
+                    oracle_texts_filtered = list(map(lambda t: (
+                        t.replace("its controller may cast a copy of the encoded card without paying its mana cost", '')
+                         .replace("(Create a token that's a copy of a creature token you control.)", '')
+                         .replace('copy it and you may choose a new target for the copy', '')
+                         .replace("create a token that's a copy of this creature that's tapped and attacking that player", '')),
+                        oracle_texts_filtered))
+            oracle_texts_low = list(map(str.lower, oracle_texts_filtered))
+            for regexp in COPY_CARDS_REGEX:
+                if (list(search_strings(regexp, oracle_texts_low))
+                        and not list(search_strings(COPY_CARDS_EXCLUDE_REGEX,
+                                                    oracle_texts_low))):
+                    cards_copy.append(card)
+                    break
+
+    cards_copy_cmc_3 = list(filter(lambda c: c['cmc'] <= 3, cards_copy))
+
+    cards_copy_cmc_3_target_creature = list(filter(
+        lambda c: bool(list(in_strings('creature', list(map(str.lower, get_oracle_texts(c)))))),
+        cards_copy_cmc_3))
+    cards_copy_cmc_3_target_creature_graveyard = list(filter(
+        lambda c: bool(list(in_strings('graveyard', list(map(str.lower, get_oracle_texts(c)))))),
+        cards_copy_cmc_3_target_creature))
+    cards_copy_cmc_3_target_creature_hand = list(filter(
+        lambda c: bool(list(in_strings('hand', list(map(str.lower, get_oracle_texts(c)))))),
+        [c for c in cards_copy_cmc_3_target_creature
+         if c not in cards_copy_cmc_3_target_creature_graveyard]))
+    cards_copy_cmc_3_target_creature_battlefield = [
+        c for c in cards_copy_cmc_3_target_creature
+        if c not in cards_copy_cmc_3_target_creature_graveyard
+        and c not in cards_copy_cmc_3_target_creature_hand]
+
+    cards_copy_cmc_3_target_artifact = list(filter(
+        lambda c: bool(list(in_strings('artifact', list(map(str.lower, get_oracle_texts(c)))))),
+        [c for c in cards_copy_cmc_3 if c not in cards_copy_cmc_3_target_creature]))
+
+    cards_copy_cmc_3_target_instant_or_sorcery = list(filter(
+        lambda c: bool(list(search_strings('instant|sorcery', list(map(str.lower, get_oracle_texts(c)))))),
+        [c for c in cards_copy_cmc_3 if c not in cards_copy_cmc_3_target_creature
+         and c not in cards_copy_cmc_3_target_artifact]))
+
+    copy_stats_data = {
+        'Copy cards': len(cards_copy),
+        'Copy cards (CMC <= 3)': len(cards_copy_cmc_3),
+        'Copy cards (CMC <= 3, creatures)': len(cards_copy_cmc_3_target_creature),
+        'Copy cards (CMC <= 3, creatures, from battlefield)': len(cards_copy_cmc_3_target_creature_battlefield),
+        'Copy cards (CMC <= 3, creatures, from graveyard)': len(cards_copy_cmc_3_target_creature_graveyard),
+        'Copy cards (CMC <= 3, creatures, from hand)': len(cards_copy_cmc_3_target_creature_hand),
+        'Copy cards (CMC <= 3, artifacts)': len(cards_copy_cmc_3_target_artifact),
+        'Copy cards (CMC <= 3, instants or sorcery)': len(cards_copy_cmc_3_target_instant_or_sorcery),
+        }
+
+    copy_output_data = {
+        'Copy cards (CMC <= 3) by target': {
+            'Copy cards (CMC <= 3, creatures, from battlefield)':
+                cards_copy_cmc_3_target_creature_battlefield,
+            'Copy cards (CMC <= 3, creatures, from graveyard)':
+                cards_copy_cmc_3_target_creature_graveyard,
+            'Copy cards (CMC <= 3, creatures, from hand)':
+                cards_copy_cmc_3_target_creature_hand,
+            'Copy cards (CMC <= 3, artifacts)':
+                cards_copy_cmc_3_target_artifact,
+            'Copy cards (CMC <= 3, instants or sorcery)':
+                cards_copy_cmc_3_target_instant_or_sorcery}}
+
+    cards_copy_cards_selected = []
+    for data in copy_output_data.values():
+        for cards_list in data.values():
+            cards_copy_cards_selected += sort_cards_by_cmc_and_name(cards_list)[:max_list_items]
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h3 id="copy-cards">Copy cards</h3>\n'
+        html += '    <h4>Stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in copy_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in copy_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                         limit = max_list_items, outformat = outformat, return_str = True)
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, count in copy_stats_data.items():
+            print(title+':', count)
+        print('')
+        for section, data in copy_output_data.items():
+            print(section)
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 8, outformat = outformat)
+        print('')
+
+    return cards_copy
 
 def print_combo_card_names(combo):
     """Print card's names of a combo"""
@@ -3133,10 +3656,60 @@ def display_html_header(title = 'MTG Deck Builder Assistant | made by Michael Bi
     html += '  <meta charset="utf-8" />'+'\n'
     html += '  <title>'+title+'</title>'+'\n'
     html += '  <style>'+'\n'
-    html += '    body { padding: 0 10px 0;color: #444; }'+'\n'
+    html += '    body { margin: 0px; padding: 0 10px 0; color: #444; background: white; }'+'\n'
+    html += '    .main-head { grid-area: header; background: white; box-shadow: 0 30px 40px rgb(255, 255, 255); }'+'\n'
+    html += '    .main-nav { grid-area: nav; background: white; }'+'\n'
+    html += '    .side-nav { display: none; }'+'\n'
+    html += '    .content-nav { display: none; }'+'\n'
+    html += '    .content { grid-area: content; }'+'\n'
+    html += '    .side { grid-area: sidebar; background: white; }'+'\n'
+    html += '    .main-footer { grid-area: footer; background: white; }'+'\n'
+    html += '    .commander-card { display: flex; flex-direction: column; }'+'\n'
+    html += '    .wrapper {'+'\n'
+    html += '      display: grid;'+'\n'
+    html += '      grid-gap: 20px;'+'\n'
+    html += '      grid-template-areas:'+'\n'
+    html += '        "header"'+'\n'
+    html += '        "nav"'+'\n'
+    html += '        "sidebar"'+'\n'
+    html += '        "content"'+'\n'
+    html += '        "footer";'+'\n'
+    html += '    }'+'\n'
+    html += '    @media (min-width: 500px) {'+'\n'
+    html += '      .main-nav { display: none; }'+'\n'
+    html += '      .side-nav { display: block; }'+'\n'
+    html += '      .wrapper {'+'\n'
+    html += '        grid-template-columns: 1fr 3fr;'+'\n'
+    html += '        grid-template-areas:'+'\n'
+    html += '          "header  header"'+'\n'
+    html += '          "content sidebar"'+'\n'
+    html += '          "footer  footer";'+'\n'
+    html += '      }'+'\n'
+    html += '    }'+'\n'
+    html += '    @media (min-width: 1130px) {'+'\n'
+    html += '      .main-nav { display: block; }'+'\n'
+    html += '      .side-nav { display: none; }'+'\n'
+    html += '      .wrapper {'+'\n'
+    html += '        grid-template-columns: 1fr 4fr 1fr;'+'\n'
+    html += '        grid-template-areas:'+'\n'
+    html += '          "header header  header"'+'\n'
+    html += '          "nav    content sidebar"'+'\n'
+    html += '          "nav    content sidebar"'+'\n'
+    html += '          "nav    footer  sidebar";'+'\n'
+    html += '      }'+'\n'
+    html += '    .commander-card { display: grid; gap: 20px; }'+'\n'
+    html += '    }'+'\n'
+    html += ''+'\n'
+    html += '    .main-head, .main-nav, .side { position: sticky; box-sizing: border-box; }'+'\n'
+    html += '    .main-head { top: 0; }'+'\n'
+    html += '    .main-nav, .side { top: 150px; height: 100vh; }'+'\n'
+    html += ''+'\n'
     html += '    header h1 { margin-bottom: 0; }'+'\n'
     html += '    header .subtitle { margin-top: 5px; color: gray; font-size: 0.7em; }'+'\n'
     html += '    header .subtitle a { color: inherit; }'+'\n'
+    html += '    .commander-card .image { grid-column-start: 1; grid-column-end: 1; }'+'\n'
+    html += '    .commander-card .attributes { grid-column-start: 2; grid-column-end: 3; }'+'\n'
+    html += '    .commander-card .image > img {  max-height: 400px; width: auto; border-radius: 20px; }'+'\n'
     html += '    dl {'+'\n'
     html += '      display: grid;'+'\n'
     html += '      grid-template-columns: max-content auto;'+'\n'
@@ -3171,12 +3744,8 @@ def display_html_header(title = 'MTG Deck Builder Assistant | made by Michael Bi
     html += '    details details summary {'+'\n'
     html += '      font-size: 1.2em;'+'\n'
     html += '    }'+'\n'
-    html += '    .commander-card { display: grid; gap: 0px; }'+'\n'
-    html += '    .commander-card .image { grid-column-start: 1; grid-column-end: 1; }'+'\n'
-    html += '    .commander-card .image > img {  max-height: 400px; width: auto; }'+'\n'
-    html += '    .commander-card .attributes { grid-column-start: 2; grid-column-end: 3; }'+'\n'
     html += '    .toc { color: grey; }'+'\n'
-    html += '    .toc > li > a { color: inherit; }'+'\n'
+    html += '    .toc > ol > li > a { color: inherit; }'+'\n'
     html += '    .combos-list th, .combos-list td { padding: 0 10px; text-align: center; }'+'\n'
     html += '    .combos-list th { color: gray; }'+'\n'
     html += '    .cards-list td { padding: 0 10px; text-align: right; }'+'\n'
@@ -3190,7 +3759,7 @@ def display_html_header(title = 'MTG Deck Builder Assistant | made by Michael Bi
     html += '    .card-line .name a, .combo-card a { position:relative; text-decoration: dotted; }'+'\n'
     html += '    .card-line .name a span.image, .combo-card a span.image { position:absolute; display:none; z-index:99; }'+'\n'
     html += '    .card-line .name a:hover span.image, .combo-card a:hover span.image { display:block; left: 100%; bottom: 100%; }'+'\n'
-    html += '    .card-line .name a:hover span.image > img, .combo-card a:hover span.image > img { max-height: 400px; width: auto; }'+'\n'
+    html += '    .card-line .name a:hover span.image > img, .combo-card a:hover span.image > img { max-height: 400px; width: auto; border-radius: 20px; }'+'\n'
     # leeched from Scryfall CSS: begin
     html += '    .card-not-found {'+'\n'
     html += '      display: block;'+'\n'
@@ -3213,10 +3782,11 @@ def display_html_header(title = 'MTG Deck Builder Assistant | made by Michael Bi
     # leeched from Scryfall CSS: end
     html += '    button.action {'+'\n'
     html += '      margin-top: 15px;'+'\n'
-    html += '      font-size: 1.8em;'+'\n'
+    html += '      font-size: 1.2em;'+'\n'
     html += '      padding: 10px 20px;'+'\n'
     html += '      background-color: lightgray;'+'\n'
-    html += '      border-radius: 10px;'+'\n'
+    html += '      border-radius: 7px;'+'\n'
+    html += '      width: 95%;'+'\n'
     html += '    }'+'\n'
     html += '    button.show { background-color: lightgreen; }'+'\n'
     html += '    button.download { background-color: lightblue; }'+'\n'
@@ -3233,17 +3803,48 @@ def display_html_header(title = 'MTG Deck Builder Assistant | made by Michael Bi
     html += '    .light_yellow, a.light_yellow { color: darkkhaki; }'+'\n'
     html += '    .light_blue, a.light_blue { color: lightblue; }'+'\n'
     html += '    .dark_grey, a.dark_grey { color: dimgray; }'+'\n'
+    # dark theme
+    html += '    @media (prefers-color-scheme: dark) {'+'\n'
+    html += '      body { color: #ddd; background: black; }'+'\n'
+    html += '      .main-head { background: black; box-shadow: 0 30px 40px rgb(0, 0, 0); }'+'\n'
+    html += '      .main-nav { background: black; }'+'\n'
+    html += '      .side { background: black; }'+'\n'
+    html += '      .main-footer { background: black; }'+'\n'
+    html += '      header .subtitle { color: #bbb; }'+'\n'
+    html += '      dt { color: #aaa; }'+'\n'
+    html += '      summary::-webkit-details-marker { color: #00ACF3; }'+'\n'
+    html += '      details summary { background-color: #444; }'+'\n'
+    html += '      .toc { color: #bbb; }'+'\n'
+    html += '      .combos-list th { color: gray; }'+'\n'
+    html += '      .red, a.red { color: red; }'+'\n'
+    html += '      .blue, a.blue { color: blue; }'+'\n'
+    html += '      .gray, a.gray { color: gray; }'+'\n'
+    html += '      .yellow, a.yellow { color: burlywood; }'+'\n'
+    html += '      .light_green, a.light_green { color: lightgreen; }'+'\n'
+    html += '      .white, a.white { color: white; }'+'\n'
+    html += '      .magenta, a.magenta { color: magenta; }'+'\n'
+    html += '      .cyan, a.cyan { color: cyan; }'+'\n'
+    html += '      .light_grey, a.light_grey { color: #999; }'+'\n'
+    html += '      .light_yellow, a.light_yellow { color: darkkhaki; }'+'\n'
+    html += '      .light_blue, a.light_blue { color: lightblue; }'+'\n'
+    html += '      .dark_grey, a.dark_grey { color: dimgray; }'+'\n'
+    html += '      button.show { background-color: #31f231; }'+'\n'
+    html += '      button.download { background-color: #51d1fb; }'+'\n'
+    html += '    }'+'\n'
     html += '  </style>'+'\n'
     html += '  <script>'+'\n'
     html += '    var deck_list = [];'+'\n'
-    html += '    function update_deck_list(checkboxElement) {'+'\n'
+    html += '    function update_deck_list(checkboxElement, cardType) {'+'\n'
     html += '      let card_name = checkboxElement.value;'+'\n'
     html += '      let in_deck_list = deck_list.indexOf(card_name);'+'\n'
+    html += '      var elementCount = document.getElementById(cardType+"-count");'+'\n'
     html += '      if(checkboxElement.checked && in_deck_list < 0) {'+'\n'
     html += '        deck_list.push(card_name);'+'\n'
+    html += '        elementCount.innerHTML = Number(elementCount.innerHTML) + 1;'+'\n'
     html += '      }'+'\n'
     html += '      else if(! checkboxElement.checked && in_deck_list > -1) {'+'\n'
     html += '        deck_list.splice(in_deck_list, 1);'+'\n'
+    html += '        elementCount.innerHTML = Number(elementCount.innerHTML) - 1;'+'\n'
     html += '      };'+'\n'
     html += '      var deck_size_elt = document.getElementById("deck-size");'+'\n'
     html += '      deck_size_elt.innerHTML = " ("+deck_list.length+" cards)";'+'\n'
@@ -3254,7 +3855,12 @@ def display_html_header(title = 'MTG Deck Builder Assistant | made by Michael Bi
     html += '      return nameElt.innerHTML;'+'\n'
     html += '    }'+'\n'
     html += '    function generate_deck_list() {'+'\n'
-    html += '      return "1 "+deck_list.join("\\n1 ")+"\\n\\n1 "+get_commander_name();'+'\n'
+    html += '      var dek_list = "";'+'\n'
+    html += '      if (deck_list.length > 0) {'+'\n'
+    html += '        dek_list = "1 "+deck_list.join("\\n1 ")+"\\n\\n";'+'\n'
+    html += '      }'+'\n'
+    html += '      dek_list += "1 "+get_commander_name();'+'\n'
+    html += '      return dek_list;'+'\n'
     html += '    }'+'\n'
     html += '    function show_deck_list() {'+'\n'
     html += '      var div = document.getElementById("deck-list");'+'\n'
@@ -3276,15 +3882,53 @@ def display_html_header(title = 'MTG Deck Builder Assistant | made by Michael Bi
     html += '      dlink.click();'+'\n'
     html += '      dlink.remove();'+'\n'
     html += '    }'+'\n'
+    html += '    function loadimg(element) {'+'\n'
+    html += '      imgelt = element.querySelector("img[src='+"'#'"+']");'+'\n'
+    html += '      if (imgelt && "imgurl" in imgelt.dataset) {'+'\n'
+    html += '        imgelt.setAttribute("src", imgelt.dataset.imgurl);'+'\n'
+    html += '      }'+'\n'
+    html += '    }'+'\n'
     html += '  </script>'+'\n'
     html += '</head>'+'\n'
     html += '<body>'+'\n'
-    html += '  <header>'+'\n'
-    html += '    <h1>'+title+'</h1>'+'\n'
-    html += '    <p class="subtitle">'
+    html += '  <div class="wrapper">'+'\n'
+    html += '    <header class="main-head">'+'\n'
+    html += '      <h1>'+title+'</h1>'+'\n'
+    html += '      <p class="subtitle">'
     html += 'Get the <a href="'+SOURCE_URL+'">source code on Github</a>'
     html += '</p>'+'\n'
-    html += '  </header>'+'\n'
+    html += '    </header>'+'\n'
+    html += get_html_toc(cssclass = 'main-nav')
+    html += '    <aside class="side">'+'\n'
+    html += get_html_toc(cssclass = 'side-nav')
+    html += '      <h2>Deck<span id="deck-size"></span></h2>'+'\n'
+    html += '      <dl>'+'\n'
+    html += '        <dt>Lands</dt>'+'\n'
+    html += '        <dd id="land-count">0</dd>'+'\n'
+    html += '        <dt>Creatures</dt>'+'\n'
+    html += '        <dd id="creature-count">0</dd>'+'\n'
+    html += '        <dt>Planeswalkers</dt>'+'\n'
+    html += '        <dd id="planeswalker-count">0</dd>'+'\n'
+    html += '        <dt>Artifacts</dt>'+'\n'
+    html += '        <dd id="artifact-count">0</dd>'+'\n'
+    html += '        <dt>Enchantments</dt>'+'\n'
+    html += '        <dd id="enchantment-count">0</dd>'+'\n'
+    html += '        <dt>Instants</dt>'+'\n'
+    html += '        <dd id="instant-count">0</dd>'+'\n'
+    html += '        <dt>Sorceries</dt>'+'\n'
+    html += '        <dd id="sorcery-count">0</dd>'+'\n'
+    html += '        <dt>Stickers</dt>'+'\n'
+    html += '        <dd id="stickers-count">0</dd>'+'\n'
+    html += '        <dt>Unkown</dt>'+'\n'
+    html += '        <dd id="unknown-count">0</dd>'+'\n'
+    html += '      </dl>'+'\n'
+    html += '      <button class="action show" onclick="show_deck_list()">'
+    html += 'Show <small>/update</small> deck list</button>'+'\n'
+    html += '      <button class="action download" onclick="download_deck_list()">'
+    html += 'Download deck list</button>'+'\n'
+    html += '      <div id="deck-list"></div>'+'\n'
+    html += '    </aside>'+'\n'
+    html += '    <div class="content">'+'\n'
     print(html)
 
 def display_commander_card(card, commander_combos_regex, outformat = 'console', outdir = '/tmp'):
@@ -3380,28 +4024,38 @@ def display_commander_card(card, commander_combos_regex, outformat = 'console', 
         print('     Text:', card['oracle_text'])
         print('Combo exp:', commander_combos_regex)
 
+def get_html_toc(cssclass = ''):
+    """Return the HTML Table Of Content"""
+    html = '  <nav class="toc'+((' '+cssclass) if cssclass else '')+'">'+'\n'
+    html += '    <ol>'+'\n'
+    html += '      <li><a href="#stats-all-cards">Stats all cards</a></li>'+'\n'
+    html += '      <li><a href="#commander-card">Commander card</a></li>'+'\n'
+    html += '      <li><a href="#commander-combos">Commander combos</a></li>'+'\n'
+    html += '      <li><a href="#combos-k-core">Combos k-core</a></li>'+'\n'
+    html += '      <li><a href="#with-commanders-keyword">'+"With commander's keyword</a></li>"+'\n'
+    html += '      <li><a href="#lands">Lands</a></li>'+'\n'
+    html += '      <li><a href="#land-fetchers">Land fetchers</a></li>'+'\n'
+    html += '      <li><a href="#ramp-cards">Ramp cards</a></li>'+'\n'
+    html += '      <li><a href="#draw-cards">Draw cards</a></li>'+'\n'
+    html += '      <li><a href="#tutor-cards">Tutor cards</a></li>'+'\n'
+    html += '      <li><a href="#removal-cards">Removal cards</a></li>'+'\n'
+    html += '      <li><a href="#disabling-cards">Disabling cards</a></li>'+'\n'
+    html += '      <li><a href="#wipe-cards">Board wipe cards</a></li>'+'\n'
+    html += '      <li><a href="#graveyard-recursion-cards">Graveyard recursion cards</a></li>\n'
+    html += '      <li><a href="#graveyard-hate-cards">Graveyard hate cards</a></li>'+'\n'
+    html += '      <li><a href="#copy-cards">Copy cards</a></li>'+'\n'
+    html += '      <li><a href="#best-cards">Best cards</a></li>'+'\n'
+    html += '    </ol>'+'\n'
+    html += '  </nav>'+'\n'
+    return html
+
 def display_deck_building_header(outformat = 'console'):
     """Display the deck building header"""
 
     # html
     if outformat == 'html':
         html = '  <h2>Deck building</h2>'+'\n'
-        html += '  <ol class="toc">'+'\n'
-        html += '    <li><a href="#commander-combos">Commander combos</a></li>'+'\n'
-        html += '    <li><a href="#combos-k-core">Combos k-core</a></li>'+'\n'
-        html += '    <li><a href="#with-commanders-keyword">'
-        html += "Cards with commander's keyword</a></li>"+'\n'
-        html += '    <li><a href="#lands">Lands</a></li>'+'\n'
-        html += '    <li><a href="#land-fetchers">Land fetchers</a></li>'+'\n'
-        html += '    <li><a href="#ramp-cards">Ramp cards</a></li>'+'\n'
-        html += '    <li><a href="#draw-cards">Draw cards</a></li>'+'\n'
-        html += '    <li><a href="#tutor-cards">Tutor cards</a></li>'+'\n'
-        html += '    <li><a href="#removal-cards">Removal cards</a></li>'+'\n'
-        html += '    <li><a href="#wipe-cards">Board wipe cards</a></li>'+'\n'
-        html += '    <li><a href="#graveyard-hate-cards">Graveyard hate cards</a></li>'+'\n'
-        html += '    <li><a href="#best-cards">Best cards</a></li>'+'\n'
-        html += '    <li><a href="#deck-list">Deck list generation</a></li>'+'\n'
-        html += '  </ol>'+'\n'
+        html += get_html_toc(cssclass = 'content-nav')
         print(html)
 
     # console
@@ -3706,10 +4360,9 @@ def compare_with_hand_crafted_list(selection, list_file, title, cards):
         print("DEBUG list file '"+list_file+"' not found", file=sys.stderr)
         return
 
+    misses = []
+    # bad_misses = []
     with open(list_file, 'r', encoding='utf-8') as f_read:
-        print('')
-        print(title)
-        print('')
         for name in f_read:
             name = name.strip()
             card = get_card(name, cards, strict = True)
@@ -3722,8 +4375,20 @@ def compare_with_hand_crafted_list(selection, list_file, title, cards):
                         no_print = True
                         break
             if not no_print and card and not filter_lands(card):
-                print_card(card)
-        print('')
+                oracle_texts_low = list(map(str.lower, get_oracle_texts(card)))
+                # if (bool(list(in_strings('graveyard', oracle_texts_low))) or
+                #         bool(list(in_strings('counter', oracle_texts_low)))):
+                #     bad_misses.append(card)
+                #     continue
+                misses.append(card)
+
+    print('')
+    print(title)
+    print('')
+    print_cards_list(sort_cards_by_cmc_and_name(misses))
+    print('')
+    # print(title+' (bad misses)')
+    # print_cards_list(sort_cards_by_cmc_and_name(bad_misses))
 
 def main():
     """Main program"""
@@ -3878,21 +4543,21 @@ def main():
     commander_combos_no_filter = get_combos(combos, cards, name = COMMANDER_NAME, only_ok = False)
     commander_combos = get_combos(combos, cards_ok, name = COMMANDER_NAME)
 
-    # combos_rank_1, combos_rank_2 = assist_commander_combos(
-    #         commander_combos_no_filter, commander_combos, commander_combos_regex, combos, cards_ok,
-    #         outformat = outformat)
+    combos_rank_1, combos_rank_2 = assist_commander_combos(
+            commander_combos_no_filter, commander_combos, commander_combos_regex, combos, cards_ok,
+            outformat = outformat)
 
     if USE_NX:
-        # cards_excludes = (list(combos_rank_1.keys()) + list(combos_rank_2.keys()))
+        cards_excludes = (list(combos_rank_1.keys()) + list(combos_rank_2.keys()))
         if outformat == 'html':
             html = '  <section>'+'\n'
             html += '    <h3 id="combos-k-core">'
             html += 'Combos k-core <small>(not tied to the commander)</small></h3>'
             print(html)
-        # assist_k_core_combos(combos, cards_ok, commander_combos_regex, 2, cards_excludes,
-        #                      outformat = outformat)
-        # assist_k_core_combos(combos, cards_ok, commander_combos_regex, 3, cards_excludes,
-        #                      outformat = outformat)
+        assist_k_core_combos(combos, cards_ok, commander_combos_regex, 2, cards_excludes,
+                             outformat = outformat)
+        assist_k_core_combos(combos, cards_ok, commander_combos_regex, 3, cards_excludes,
+                             outformat = outformat)
         if outformat == 'html':
             html = '  </section>'+'\n'
             print(html)
@@ -3924,7 +4589,6 @@ def main():
                                        'Ramp cards missing (VS ramp_cards.list.txt)',
                                        cards_ok)
 
-    # TODO compares with hand made featured cards list
     cards_draw_cards = assist_draw_cards(
         [c for c in cards_ok if c not in cards_ramp_cards_land_fetch],
         land_types_invalid_regex, max_list_items = args.max_list_items,
@@ -3949,14 +4613,18 @@ def main():
                                        cards_ok)
 
     cards_removal = assist_removal_cards(
-        [c for c in cards_ok if c not in cards_ramp_cards
-         and c not in cards_draw_cards and c not in cards_tutor_cards],
+        [c for c in cards_ok if c not in cards_draw_cards and c not in cards_tutor_cards],
+        max_list_items = args.max_list_items, outformat = outformat)
+
+    cards_disabling = assist_disabling_cards(
+        [c for c in cards_ok if c not in cards_draw_cards and c not in cards_tutor_cards
+         and c not in cards_removal],
         max_list_items = args.max_list_items, outformat = outformat)
 
     if outformat == 'console':
-        selection = cards_removal
+        selection = cards_removal + cards_disabling
         compare_with_hand_crafted_list(selection, 'removal_cards.list.txt',
-                                       'Removal cards missing (VS removal_cards.list.txt)',
+                                       'Removal/disabling cards missing (VS removal_cards.list.txt)',
                                        cards_ok)
 
     cards_wipe = assist_wipe_cards(
@@ -3969,7 +4637,6 @@ def main():
                                        'Wipe cards missing (VS wipe_cards.list.txt)',
                                        cards_ok)
 
-    # graveyard recursion
     cards_graveyard_recursion = assist_graveyard_recursion_cards(
         [c for c in cards_ok if c not in cards_removal and c not in cards_wipe],
         max_list_items = args.max_list_items, outformat = outformat)
@@ -3981,7 +4648,6 @@ def main():
             'Graveyard recursion cards missing (VS graveyard_recursion_cards.list.txt)',
             cards_ok)
 
-    # graveyard hate
     cards_graveyard_hate = assist_graveyard_hate_cards(
         [c for c in cards_ok if c not in cards_removal and c not in cards_wipe],
         max_list_items = args.max_list_items, outformat = outformat)
@@ -3993,7 +4659,11 @@ def main():
             'Graveyard hate cards missing (VS graveyard_hate_cards.list.txt)',
             cards_ok)
 
-    # best cards
+    cards_copy = assist_copy_cards(
+        [c for c in cards_ok if c not in cards_draw_cards and c not in cards_tutor_cards
+         and c not in cards_removal and c not in lands],
+        max_list_items = args.max_list_items, outformat = outformat)
+
     cards_best = assist_best_cards(
         cards_ok, max_list_items = args.max_list_items, outformat = outformat)
 
@@ -4003,12 +4673,10 @@ def main():
 
     if args.html:
         html = ''
-        # TODO move the button to the top bar (merge it with the title ?)
-        html += '  <button class="action show" onclick="show_deck_list()">'
-        html += 'Show <small>/update</small> deck list<span id="deck-size"></span></button>'+'\n'
-        html += '  <button class="action download" onclick="download_deck_list()">'
-        html += 'Download deck list</button>'+'\n'
-        html += '  <div id="deck-list"></div>'+'\n'
+        html += '    </div>'+'\n'
+        html += '    <footer class="main-footer">Copyright © Michael Bideau '
+        html += '(all images and text are the property of Wizard of the Coast)</footer>'+'\n'
+        html += '  </div>'+'\n' # wrapper end
         # on page load, uncheck all checked checkboxes
         html += '  <script>'+'\n'
         html += '    function uncheck_all() {'+'\n'
