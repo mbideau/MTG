@@ -65,7 +65,22 @@ except ImportError:
 SOURCE_URL = 'https://github.com/mbideau/MTG/blob/main/deck_builder_assistant.py'
 
 IFWHEN_REGEXP = '(if|when(ever)|every *time|each time)'
-PLAYER_REGEXP = '(you|they|((an?|target|that|chosen|each|every|enchanted) (player|opponent|owner)))'
+PLAYER_REGEXP = ("(you|they|("
+                    "(an?|target|that|chosen|each|every|enchanted|its|'s|defending|attacking) "
+                    '(player|opponent|owner|controller)'
+                 ')|your opponents)')
+
+# entries format is the following:
+#   <feature_name>: {
+#     <regex_checked_against_commander_oracle_text>: [
+#        <regex_check_against_all_other_cards>
+#        or tuple(<regex_check_against_all_other_cards>,
+#                 [<exclude_regex_that_should_not_match>, ...])
+#        ...
+#     ],
+#     ...
+#   },
+#   ...
 COMMANDER_FEATURES_REGEXES = {
     'lifeloss': {
         PLAYER_REGEXP+'.*(lose|have lost).*life': [
@@ -77,29 +92,83 @@ COMMANDER_FEATURES_REGEXES = {
         PLAYER_REGEXP+'.*(draw|have draw)': [
             IFWHEN_REGEXP+' you draw']},
     'damage dealt to player': {
-        '(trample|fear|menace|shadow|horsemanship|can be blocked only by' # add flying ?
+        # NOTE: 'shadow' and 'horsemanship' are not taken into account because they are dubious
+        '(trample|fear( |[,.])|menace|skulk|intimidate|can be blocked only by' # add flying ?
         '|'+PLAYER_REGEXP+' (is|are) dealt damage)': [
-            IFWHEN_REGEXP+' ('+PLAYER_REGEXP+' is dealt damage'
-            '|deals? (combat )?damage to '+PLAYER_REGEXP+')']},
+            (IFWHEN_REGEXP+' ('+PLAYER_REGEXP+' is dealt damage'
+             '|deals? (combat )?damage to '+PLAYER_REGEXP+')',
+             ["if a player is dealt damage this way"])]},
     'poison': {
-        '(toxic|poison|infect)': [IFWHEN_REGEXP+' '+PLAYER_REGEXP+' '
-                                '(gets? a poison counter|is poisoned)']},
+        '(toxic|poison|infect)': [
+            ('(toxic|poison|infect)', ["if that creature has (toxic|infect)", "infection counter",
+                                       "you can't get poison counters"]),
+            IFWHEN_REGEXP+' '+PLAYER_REGEXP+' (gets? a poison counter|is poisoned)',
+            '(^|\n|[,.] )corrupted']},
     'counters': {
-        '((add|put) [^.] counter)' : [IFWHEN_REGEXP+' [^.]+ counter']},
+        '((add|put) [^.]+ counter)' : [IFWHEN_REGEXP+' [^.]+ counter']},
     'tokens': {
         '(create [^.]*token)': [IFWHEN_REGEXP+' [^.]+ create [^.]*token']},
     'pay with life': {
         'can be paid with [^.]*life': [
             IFWHEN_REGEXP+' you pay with [^.]*life',
-            '(may be paid with|pay|you lose) [^.]*life']}
+            '(may be paid with|pay|you lose) [^.]*life']},
+    'force blocking': {
+        # @see: https://boardgames.stackexchange.com/a/7311
+        "must be blocked": [
+            ("must be blocked", ["must be blocked by exactly [^.]+ creature",
+                                 "must be blocked by an?"]),
+            "all creatures able to block"]},
+    'unblockable': {
+        "unblockable|can't be blocked|creatures [^.]+ can't block creatures you control": [
+            ("unblockable|can't be blocked|creatures [^.]+ can't block creatures you control", [
+                "protection from",
+                "can't be blocked by more than one creature",
+                "can't be blocked by (walls|humans|knights|saprolings|vampires|artifacts?|enchanted|creature token)",
+                "can't be blocked by creatures with (flying|horsemanship)",
+                "can't be blocked (this turn )?except by",
+                "can't be blocked by creatures with power",
+                "can't be blocked by (blue|red|green|white|black) creatures",
+                "can't be blocked as long as defending player controls an? [^.]+",
+                "can't be blocked by creatures with greater power",
+                "can block or be blocked by only creatures with shadow",
+                "can't be blocked as long as defending player controls the most creatures",
+                r"\(this spell works on creatures that can't be blocked\.\)",
+                ])]},
+    'evade blocking': {
+        # NOTE: 'shadow' and 'horsemanship' are not taken into account because they are dubious
+        "menace|intimidate|skulk|fear( |[,.])|can be blocked only by|can't be blocked except by": [
+            "menace|intimidate|skulk|fear( |[,.])|can be blocked only by|can't be blocked except by"
+            ]}, # add flying ?
+    'proliferate': {
+        'proliferate': ['proliferate']},
+    'populate': {
+        'populate': ['populate']},
     # TODO add ETB (Enter The Battlefield), LTB (Leave The Battlefield)
-    # TODO add proliferate (associated with poison, counters and tokens)
-    # TODO add populate (associated with token)
 }
 # list of associated features
 FEATURE_MAP = {
-    'lifegain': [
-        'pay with life']}
+    'feat:lifegain': [
+        'feat:pay with life',
+        'keyword:Lifelink'],
+    'feat:force blocking': [
+        'feat:poison',
+        'feat:damage dealt to player'],
+    'feat:poison': [
+        'feat:proliferate',
+        'feat:unblockable',
+        'feat:evade blocking',
+        'feat:force blocking'],
+    'feat:proliferate': [
+        'feat:poison',
+        'feat:counters',
+        'feat:tokens'],
+    'feat:populate': [
+        'feat:tokens'],
+    'feat:tokens': [
+        'feat:populate',
+        'feat:proliferate'],
+    'feat:counters': [
+        'feat:proliferate']}
 
 # Add a parameter to express if a 1-drop at turn 1 is important,
 # that will exclude land that are not usable at turn 1 or colorless at turn 1
@@ -276,25 +345,70 @@ COPY_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
 WIPE_CARDS_REGEX = [
     r'((destroy|remove|exile) (all|every|each)|put (those( cards)?|them) in the graveyard)'
 ]
+WIPE_CARDS_BY_FEATURE_REGEX = {
+    'only affect opponent': [
+        "(exile|destroy) (all|each) (artifacts|creatures) your opponents control"],
+    'selective': [
+        "destroy each (nonland permanent|artifact and creature) with mana value [^.]+ counters",
+        "destroy all creatures that dealt damage to you this turn",
+        "destroy all non-wall creatures that player controls that didn't attack",
+        "destroy all untapped creatures that didn't attack this turn",
+        "destroy all creatures of the creature type",
+        "destroy all creatures with no counters on them"],
+    'mana value': [
+        "(destroy|exile) (each|all) (nonland permanent|artifacts?|creatures?) with mana value",
+        r"destroy all creatures \[with mana value 2 or less\]",
+        "destroy all permanents with that spell's mana value"],
+    'strength value': ["(destroy|exile) all creatures with (power|toughness)"],
+    'tapped / untapped': ["(exile|destroy) all (un)?tapped creatures"]
+}
 WIPE_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
-    '[Rr]emove all damage',
-    '[Ee]xile all other cards revealed',
-    "[Ee]xile each opponent's (library|hand|graveyard)",
-    r'[Rr]emove all ((\w+|[+-]\d/[+-]\d) )?counter',
-    "[Ee]xile (all cards from )?(all|target player's) graveyard",
-    r"[Ee]xile all creature cards (with mana value \d or less )?from (target player's|your) "
+    'remove all damage',
+    'exile all other cards revealed',
+    "exile each opponent's (library|hand|graveyard)",
+    r'remove all ((\w+|[+-]\d/[+-]\d) )?counter',
+    "exile (all cards from )?(all|target player's) graveyard",
+    r"exile all creature cards (with mana value \d or less )?from (target player's|your) "
         "(library|hand|graveyard)",
-    r'[Dd]estroy all (\w+ )?tokens',
-    '[Rr]emove all attackers (and blockers )?from combat',
-    '([Ee]xile|[Rr]emove) all attacking creatures',
-    '[Ee]xile all (the )?cards from your (library|hand|graveyard)',
-    '[Ii]f [^.]+ has [^.]+ counters on it, remove all of them',
-    '[Ee]xile all spells and abilities from the stack',
-    '[Dd]estroy all creatures that entered the battlefield this turn',
-    '[Ee]xile (all|every|each) (nontoken )?creatures? you control',
-    "[Ee]xile [Aa]ll [Hh]allow's [Ee]ve",
-    '[Ee]xile all ([Ww]arriors|[Zz]ombies)',
-    "[Ee]xile all creature cards from all graveyards",
+    r'destroy all (\w+ )?tokens',
+    'remove all attackers (and blockers )?from combat',
+    '(exile|remove) all attacking creatures',
+    'exile all (the )?cards from your (library|hand|graveyard)',
+    'if [^.]+ has [^.]+ counters on it, remove all of them',
+    'exile all spells and abilities from the stack',
+    'destroy all creatures that entered the battlefield this turn',
+    'exile (all|every|each) (nontoken )?creatures? you control',
+    "exile all hallow's eve",
+    'exile all (warriors|zombies)',
+    "exile all creature cards from all graveyards",
+    "destroy all creatures that were blocked by that creature",
+    "exile all creatures. at the beginning of the next end step, return those cards",
+    "return to your hand all enchantments you both own and control",
+    "destroy each of the chosen creatures that didn't attack",
+    "destroy each of those creatures that didn't attack",
+    "destroy all auras and equipment attached to target creature",
+    "then if there are five or more hatchling counters on it, remove all of them and transform it",
+    "destroy all nontoken permanents with a name originally printed in the homelands expansion",
+    "then, destroy all other creatures if its power is exactly 20",
+    "exile all cards that are black or red from all graveyards",
+    "flip a coin",
+    "while an opponent is searching their library, they exile each card they find",
+    "whenever a player casts a creature spell, destroy all reflections",
+    "exile each permanent with the most votes",
+    "destroy all goblins",
+    "destroy all merfolk tapped",
+    "exile all creatures blocked by",
+    "destroy each permanent with a doom counter on it",
+    "exile each creature that crewed it",
+    "destroy all curses attached to you",
+    "destroy all creatures that share a creature type with the sacrificed creature",
+    "destroy each permanent with the same name as another permanent",
+    "then exile all other tokens created with",
+    "exile all serf tokens",
+    "then destroy all creatures except creatures chosen this way",
+    "destroy each creature chosen this way",
+    "destroy all auras attached to them",
+    "exile all opponents' graveyards",
 ]))+')'
 GRAVEYARD_HATE_CARDS_REGEX = {
     'all cards': [
@@ -396,6 +510,7 @@ RAMP_CARDS_REGEX_BY_FEATURES = {
         "(then |you may )?put (it|that card) onto the battlefield"),
         'put (a|up to \\w+) lands? cards? from your hand onto the battlefield',
         "gain control of a land you don't control"],
+    # TODO improves categorisation (separate malus cards, etc.)
     'mana': [
         'adds? (an additional )?\\{[crgbuw0-9]\\}',
         'adds? [^.]+ to your mana pool',
@@ -418,6 +533,34 @@ RAMP_CARDS_REGEX_BY_FEATURES = {
     'untap land or permanent': [
         'you may [^.]+ untap target [^.]+ land',
         'choose [^.]+ land.* untap all tapped permanents of that type that player controls']}
+RAMP_CARDS_MALUS_REGEX = {
+    'mana': [
+        "Spend this mana only to",
+        r"{\w+}, Pay \w+ life: Add [^.]+ mana",
+        r"Sacrifice <name>: Add ({\w+}|[^.]+ mana)",
+        "As an additional cost to cast this spell, (exile|sacrifice|tap|reveal|discard)",
+        "When <name> dies, [^.]*create a Treasure token",
+        "When <name> dies, choose one .*. Create a Treasure token",
+        r"{[^T]+}: Add ({\w+}|[^.]+ mana)",
+        "{T}, Sacrifice another creature",
+        r"{T}, Tap an untapped [^.]+ you control: Add ({\w+}|[^.]+ mana)",
+        r"When <name> dies, add ({\w+}|[^.]+ mana)",
+        "Whenever equipped creature deals combat damage to a player, create a Treasure token",
+        r"Sacrifice this land: Add ({\w+}|[^.]+ mana)",
+        "You can't spend this mana to cast spells",
+        r"Sacrifice this creature: Add ({\w+}|[^.]+ mana)",
+        "Roll (a d6|the planar die)",
+        r"{T}: Add ({\w+}|[^.]+ mana of any color). Activate only if",
+        "When <name> enters the battlefield, create a Treasure token",
+        "Exile <name> from your graveyard: Create a Treasure token",
+        "Whenever <name> attacks, each player creates a Treasure token",
+        r"{T}, Mill [^.]+ card: Add {\w+}",
+        "When <name> enters the battlefield or is put into a graveyard from the battlefield, "
+            "create a Treasure token",
+        r"{T}: Add {\w+} or {\w+}. <name> deals 1 damage to you",
+        "Whenever <name> becomes blocked, choose one [^.]+ Create a Treasure token",
+        r"Whenever a creature enters the battlefield, you lose [^.]+ life and add {\w+}",
+    ]}
 RAMP_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
     'defending player controls? [^.]+ land',
     'this spell costs \\{\\d+\\} less to cast',
@@ -429,6 +572,54 @@ RAMP_CARDS_LAND_FETCH_REGEX = r'search(es)? (your|their) library for .* ' \
 LAND_CYCLING_REGEX = r'(land ?|'+('|'.join(map(str.lower, COLOR_TO_LAND.values())))+')cycling'
 LAND_RECOMMENDED_MULTICOLOR = [
 '']
+
+NO_PAY_CARDS_REGEX = {
+    'hand': [
+        '(you may )?put (a|this|that|target) creature card from your hand (on)?to the battlefield'],
+    'library': [
+        'reveal.*library.*without paying its mana cost'],
+    'exile, suspend': [
+        'suspend.*when the last is removed, cast it without paying its mana cost',
+        'exile it with [^.]+ time counters on it and it gains suspend'],
+    'exile, cascade': [
+        ('cascade.*when you cast this spell, exile cards from the top of your library until you '
+         'exile a nonland card that costs less. you may cast it without paying its mana cost'),
+        ('spells? you cast( from exile)?( (this|each) turn)?( that mana from a treasure was spent '
+         'to cast)? (have|has) cascade')],
+    'exile, discover': [
+        ('discover.*exile cards from the top of your library until you exile a nonland card with '
+         'mana value [0-9]?[0-9x] or less. cast it without paying its mana cost')],
+    'exile, enlist': [
+        ('enlist(\n)?.*look at the top [^.]+ cards of your library.*you may exile an instant or '
+         'sorcery card with mana value [0-9]?[0-9x] or less from among them')],
+    'exile, imprint': [
+        'imprint.*you may exile an instant card with mana value [0-9]?[0-9x] or less from your hand',
+        ("imprint.*whenever a player casts an instant or sorcery spell from their hand, exile it "
+         "instead of putting it into a graveyard as it resolves"),
+        ('imprint.*when [^.]+ enters the battlefield, you may exile [^.]+ cards? from '
+         '(your hand|a( single)? graveyard)'),
+        ('imprint.*when [^.]+ enters the battlefield, each player exiles the top [^.]+ cards of '
+         'their library'),
+        ],
+    'exile, hideaway': [
+        ('hideaway.*look at the top [^.]+ cards of your library, exile one face down, then put the '
+         'rest on the bottom in a random order')],
+    'exile, other': [
+        'exile.*without paying its mana cost'],
+    'graveyard': [
+        ('(you may )?return (a|this|that|target) creature card from your graveyard '
+         '(on)?to the battlefield')],
+    # "opponent's": [
+    #     "if a card would be put into an opponent's graveyard.*without paying its mana cost"],
+    }
+
+NO_PAY_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
+    'rebound.*cast this card from exile without paying its mana cost',
+    # 'imprint.*you may cast the copy without paying its mana cost',
+    ("if you control a creature with power [^.]+, you may play the exiled card without paying its "
+     "mana cost"),
+    'cipher.*its controller may cast a copy of the encoded card without paying its mana cost',
+]))+')'
 
 CREATURE_MALUS_REGEXES = [
     "As an additional cost to cast this spell, (exile|sacrifice|tap|reveal|discard)",
@@ -571,6 +762,8 @@ COLORIZE_KEYWORD_REGEX_PART = '('+('|'.join(KEYWORDS_ABILITIES + ABILITY_WORDS))
 
 # see https://mtg.fandom.com/wiki/Category:Miscellaneous_mechanics
 # TODO: craft some regex to detect each
+
+BASIC_LAND_NAMES = ['Forest', 'Mountain', 'Plains', 'Island', 'Swamp']
 
 # functions
 
@@ -920,11 +1113,21 @@ def get_commanderspellbook_combos(outdir = '/tmp', update = False):
 
     return combos
 
-def get_oracle_texts(card):
+def get_oracle_texts(card, replace_name = None):
     """Return a list of 'oracle_text', one per card's faces"""
-    return ([card['oracle_text']] if 'oracle_text' in card
-            else ([face['oracle_text'] for face in card['card_faces']]
-                  if 'card_faces' in card and card['card_faces'] else []))
+    texts = []
+    if 'oracle_text' in card:
+        if replace_name:
+            texts.append(card['oracle_text'].replace(card['name'], replace_name))
+        else:
+            texts.append(card['oracle_text'])
+    elif 'card_faces' in card and card['card_faces']:
+        for face in card['card_faces']:
+            if replace_name:
+                texts.append(face['oracle_text'].replace(face['name'], replace_name))
+            else:
+                texts.append(face['oracle_text'])
+    return texts
 
 def get_mana_cost(card, remove_braces = True):
     """Return a list of 'mana_cost', one per card's faces"""
@@ -1025,6 +1228,10 @@ def filter_no_text(item):
     """Remove cards that have no text"""
     return any(filter(len, get_oracle_texts(item)))
 
+def filter_stickers(item):
+    """Remove cards that are Stickers"""
+    return 'type_line' not in item or item['type_line'] != 'Stickers'
+
 # TODO rename to 'rules_0' and use some 'preset'
 def filter_all_at_once(item):
     """Remove card if it doesn't pass all filters"""
@@ -1041,16 +1248,20 @@ def filter_all_at_once(item):
     if not filter_xmage_banned(item):
         return False
 
-    # rarity
+    # rarity: less rare than defined rarity
     if not filter_mythic_and_special(item):
         return False
 
-    # price: not above 100€ or 120$
+    # price: not above a defined amount in EUR/USD
     if not filter_price(item):
         return False
 
-    # color: no green no red
+    # color: only allowed colors
     if not filter_colors(item):
+        return False
+
+    # no stickers or tickets
+    if not filter_stickers(item):
         return False
 
     # default
@@ -1127,11 +1338,18 @@ def join_oracle_texts(card, truncate = False, colorize = True):
                           .replace('—.', '—').replace('. •', ' •'))
     return texts_joined
 
+def score_card_from_cmc_and_mana_cost_len(card):
+    """Return a decimal score build on CMC value and length of mana cost value"""
+    cmc = float(card['cmc']) if 'cmc' in card else 0.0
+    mana_cost = float('0.'+(str(len(card['mana_cost'])) if 'mana_cost' in card else '0').zfill(2))
+    integer, decimal = str(cmc + mana_cost).split('.')
+    score = integer.zfill(2) + '.' + decimal.zfill(2)
+    return score
+
 def sort_cards_by_cmc_and_name(cards_list):
     """Return an ordered cards list by CMC + Mana cost length as a decimal, and Name"""
-    return list(sorted(cards_list, key=lambda c: (
-        str((c['cmc'] if 'cmc' in c else 0) + float('0.'+str(len(c['mana_cost']) if 'mana_cost' in c else '0')))
-        +c['name'])))
+    return list(sorted(cards_list,
+                       key=lambda c: score_card_from_cmc_and_mana_cost_len(c) + c['name']))
 
 def print_all_cards_stats(cards, outformat = 'console'):
     """Print statistics about all cards"""
@@ -1415,6 +1633,18 @@ def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None
     cards_lands_sacrifice_search_no_tapped = list(
         filter(filter_tapped_or_untappable, cards_lands_sacrifice_search))
 
+    cards_lands_producers_non_basic = list(filter(
+        lambda c: (bool(list(search_strings('gains?|loses?', get_oracle_texts(c))))
+                   and not bool(list(search_strings('(gains?|loses?) [^.]*life',
+                                                    get_oracle_texts(c))))),
+        filter(
+            lambda c: not c['type_line'].lower().startswith('basic land'),
+            [c for c in lands if c not in cards_lands_multicolors_generic_enough
+            and c not in cards_lands_converters
+            and c not in cards_lands_tricolors
+            and c not in cards_lands_bicolors
+            and c not in cards_lands_sacrifice_search])))
+
     # NOTE: not generic enought or not really usefull lands
     # # nonbasic lands that are producers
     # cards_lands_producers_non_basic = list(filter(
@@ -1432,16 +1662,21 @@ def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None
     #             and c not in cards_lands_tricolors
     #             and c not in cards_lands_bicolors
     #             and c not in cards_lands_sacrifice_search])))
-    # cards_lands_producers_non_basic_no_colorless = list(filter(
-    #     filter_add_one_colorless_mana, cards_lands_producers_non_basic))
-    # cards_lands_producers_non_basic_colorless = [
-    #     c for c in cards_lands_producers_non_basic
-    #     if c not in cards_lands_producers_non_basic_no_colorless]
-    # cards_lands_producers_non_basic_no_colorless_not_tapped = list(filter(
-    #     filter_tapped, cards_lands_producers_non_basic_no_colorless))
-    # cards_lands_producers_non_basic_no_colorless_tapped = [
-    #     c for c in cards_lands_producers_non_basic_no_colorless
-    #     if c not in cards_lands_producers_non_basic_no_colorless_not_tapped]
+    cards_lands_producers_non_basic_no_colorless = list(filter(
+        filter_add_one_colorless_mana, cards_lands_producers_non_basic))
+    cards_lands_producers_non_basic_colorless = [
+        c for c in cards_lands_producers_non_basic
+        if c not in cards_lands_producers_non_basic_no_colorless]
+    cards_lands_producers_non_basic_no_colorless_not_tapped = list(filter(
+        filter_tapped, cards_lands_producers_non_basic_no_colorless))
+    cards_lands_producers_non_basic_no_colorless_tapped = [
+        c for c in cards_lands_producers_non_basic_no_colorless
+        if c not in cards_lands_producers_non_basic_no_colorless_not_tapped]
+    cards_lands_producers_non_basic_colorless_not_tapped = list(filter(
+        filter_tapped, cards_lands_producers_non_basic_colorless))
+    cards_lands_producers_non_basic_colorless_tapped = [
+        c for c in cards_lands_producers_non_basic_colorless
+        if c not in cards_lands_producers_non_basic_colorless_not_tapped]
     #
     # print('Lands producers of mana that are nonbasic:', len(cards_lands_producers_non_basic))
     # print('')
@@ -1510,6 +1745,19 @@ def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None
         'Sacrifice/Search lands': cards_lands_sacrifice_search,
         'Sacrifice/Search lands (not tapped or untappable)':
             cards_lands_sacrifice_search_no_tapped,
+        'Non-basic lands doing some effects (total)': cards_lands_producers_non_basic,
+        'Non-basic lands doing some effects (no colorless)':
+            cards_lands_producers_non_basic_no_colorless,
+        'Non-basic lands doing some effects (no colorless, not tapped)':
+            cards_lands_producers_non_basic_no_colorless_not_tapped,
+        'Non-basic lands doing some effects (no colorless, tapped)':
+            cards_lands_producers_non_basic_no_colorless_tapped,
+        'Non-basic lands doing some effects (colorless)':
+            cards_lands_producers_non_basic_colorless,
+        'Non-basic lands doing some effects (colorless, not tapped)':
+            cards_lands_producers_non_basic_colorless_not_tapped,
+        'Non-basic lands doing some effects (colorless, tapped)':
+            cards_lands_producers_non_basic_colorless_tapped,
     }
     land_output_data = {
         'Multicolors lands producers': [
@@ -1531,7 +1779,12 @@ def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None
              cards_lands_bicolors_filtered_not_tapped)],
         'Sacrifice/Search lands': [
             ('Sacrifice/Search lands (not tapped or untappable)',
-             cards_lands_sacrifice_search_no_tapped)]
+             cards_lands_sacrifice_search_no_tapped)],
+        'Non-basic lands doing some effects': [
+            ('Non-basic lands doing some effects (no colorless, not tapped)',
+                cards_lands_producers_non_basic_no_colorless_not_tapped),
+            ('Non-basic lands doing some effects (colorless, not tapped)',
+                cards_lands_producers_non_basic_colorless_not_tapped)],
     }
 
     for section, data in land_output_data.items():
@@ -1691,11 +1944,12 @@ def assist_land_fetch(cards, land_types_invalid_regex, max_list_items = None, ou
                 html += '      <details>'+'\n'
                 html += '        <summary>'+title+'</summary>'+'\n'
                 html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
-                                        print_powr_tough = (card_type == 'creature'),
-                                        print_type = (feature not in ['land cycling', 'channel']),
-                                        limit = max_list_items,
-                                        print_mana = (card_type not in ['land', 'stickers']),
-                                        outformat = outformat, return_str = True)
+                                         print_powr_tough = (card_type == 'creature'),
+                                         print_type = (feature not in ['land cycling', 'channel']),
+                                         limit = max_list_items,
+                                         print_mana = (card_type not in ['land', 'stickers']),
+                                         outformat = outformat, return_str = True,
+                                         card_feat = 'land-fetchers')
                 html += '      </details>'+'\n'
                 html += '    </article>'+'\n'
         html += '  </section>'+'\n'
@@ -1792,7 +2046,7 @@ def organize_by_type(cards):
         orga[get_card_type(card)].append(card)
     return orga
 
-def get_card_cssclass(card):
+def get_card_css_class(card):
     """Return the CSS classname for the specified card"""
     return re.sub('[^a-z0-9_-]', '', card['name'].lower().replace(' ', '-'))
 
@@ -1801,7 +2055,8 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
                merge_type_powr_tough = True, return_str = False, print_text = True,
                print_keywords = False, print_edhrank = True, print_price = True,
                trunc_powr_tough = 6, separator_color = 'dark_grey', rank_price_color = 'light_grey',
-               rank_price_attrs = None, outformat = 'console'):
+               rank_price_attrs = None, outformat = 'console', card_feat = None,
+               print_rarity = False):
     """Display a card or return a string representing it"""
 
     merge_type_powr_tough = merge_type_powr_tough and print_type and print_powr_tough
@@ -1813,12 +2068,17 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
 
     if outformat == 'html':
         html = ''
-        cardclass = get_card_cssclass(card)
+        cardclass = get_card_css_class(card)
         html += '        <tr class="card-line '+cardclass+'">'+'\n'
         html += '          <td class="input">'
-        html += '<input type="checkbox" name="cards" value="'+card['name']+'" '
         card_type = get_card_type(card)
-        html += 'onchange="update_deck_list(this, '+f"'{card_type}'"+')"/></td>\n'
+        card_feat_attr = ' data-cardfeat="'+card_feat+'"' if card_feat else ''
+        html += '<input type="checkbox" name="cards" value="'+card['name']+'" '
+        html += 'onchange="updateDeckList(this)" data-cardtype="'+f'{card_type}'+'"'
+        html += card_feat_attr+'/></td>\n'
+        if print_rarity:
+            rarity_value = card['rarity'] if 'rarity' in card else ''
+            html += '          <td class="rarity">'+str(rarity_value)+'</td>\n'
         if print_edhrank:
             edhrank_value = card['edhrec_rank'] if 'edhrec_rank' in card else ''
             html += '          <td class="edhrank '+rank_price_color+'">'+str(edhrank_value)+'</td>\n'
@@ -1857,7 +2117,7 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
         img_element = '<img src="#" data-imgurl="'+imgurl+'" alt="image of card '+name+'" />'
         if not imgurl:
             img_element = '<span class="card-not-found">/<span>'
-        name_and_link = ('<a class="'+get_card_colored(card)+'" href="#" onmouseover="loadimg(this);">'
+        name_and_link = ('<a class="'+get_card_colored(card)+'" href="#" onmouseover="loadImg(this);">'
                             +'<span class="name">'+name+'</span>'
                             +'<span class="image">'+img_element+'</span>'
                           +'</a>')
@@ -1885,6 +2145,12 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
         indent_part = indent_fmt.format('')
         line += indent_part
         line_visible_len += len(indent_part)
+
+        if print_rarity:
+            rarity_fmt = '# {:>5}'
+            rarity_part = rarity_fmt.format(card['rarity'] if 'rarity' in card else '')
+            line += rarity_part + separator_colored
+            line_visible_len += len(rarity_part + separator)
 
         if print_edhrank:
             edhrank_fmt = '# {:>5}'
@@ -1989,18 +2255,40 @@ def assist_ramp_cards(cards, land_types_invalid_regex, max_list_items = None, ou
                     # and not list(search_strings(r'(you|target player|opponent).*discard',
                     #                             oracle_texts_low))
                     # and not list(in_strings('graveyard', oracle_texts_low))
-                    and not filter_lands(card)):
+                    and not filter_lands(card)
+                    and ('card_faces' not in card or not filter_lands(card['card_faces'][1]))):
                 for feature, regexes in RAMP_CARDS_REGEX_BY_FEATURES.items():
                     regex = r'('+('|'.join(regexes))+')'
                     if list(search_strings(regex, oracle_texts_low)):
+                        malus = 'no malus'
+                        if feature in RAMP_CARDS_MALUS_REGEX:
+                            for regexp in RAMP_CARDS_MALUS_REGEX[feature]:
+                                reg = regexp.replace('<name>', card['name'])
+                                if list(search_strings(reg, oracle_texts)):
+                                    malus = 'malus'
+                                    break
+                        # special case for 'mana'
+                        if feature == 'mana':
+                            feature = 'mana colorless'
+                            if list(search_strings(r'Add [^.]+ mana of any color', oracle_texts)):
+                                feature = 'mana multicolored'
+                            elif list(search_strings(r'Add \{[^C]\}', oracle_texts)):
+                                feature = 'mana colored'
                         if feature not in cards_ramp_cards_by_features:
-                            cards_ramp_cards_by_features[feature] = []
-                        cards_ramp_cards_by_features[feature].append(card)
+                            cards_ramp_cards_by_features[feature] = {}
+                        if malus not in cards_ramp_cards_by_features[feature]:
+                            cards_ramp_cards_by_features[feature][malus] = []
+                        cards_ramp_cards_by_features[feature][malus].append(card)
                         cards_ramp_cards.append(card)
 
+    for feature in cards_ramp_cards_by_features:
+        cards_ramp_cards_by_features[feature] = dict(sorted(
+            cards_ramp_cards_by_features[feature].items()))
+
     cards_ramp_cards_selected = []
-    for cards_list in cards_ramp_cards_by_features.values():
-        cards_ramp_cards_selected += sort_cards_by_cmc_and_name(cards_list)[:max_list_items]
+    for cards_list_by_malus in cards_ramp_cards_by_features.values():
+        for cards_list in cards_list_by_malus.values():
+            cards_ramp_cards_selected += sort_cards_by_cmc_and_name(cards_list)[:max_list_items]
 
     if outformat == 'html':
         html = ''
@@ -2012,28 +2300,37 @@ def assist_ramp_cards(cards, land_types_invalid_regex, max_list_items = None, ou
         html += '      <dd>'+str(len(cards_ramp_cards))+'</dd>'+'\n'
         html += '    </dl>'+'\n'
         html += '    <h4>Ramp cards by feature</h4>'+'\n'
-        for feature, cards_list in cards_ramp_cards_by_features.items():
-            cards_list_sorted = sort_cards_by_cmc_and_name(cards_list)
-            title = 'Ramp cards ('+feature+'): '+str(len(cards_list_sorted))
-            html += '    <article>'+'\n'
-            html += '      <details>'+'\n'
-            html += '        <summary>'+title+'</summary>'+'\n'
-            html += print_cards_list(cards_list_sorted, limit = max_list_items,
-                                     outformat = outformat, return_str = True)
-            html += '      </details>'+'\n'
-            html += '    </article>'+'\n'
+        for feature, cards_list_by_malus in cards_ramp_cards_by_features.items():
+            for malus in ['no malus', 'malus']:
+                if malus in cards_list_by_malus:
+                    cards_list = cards_list_by_malus[malus]
+                    cards_list_sorted = sort_cards_by_cmc_and_name(cards_list)
+                    malus_text = ', with '+malus if malus == 'malus' else ''
+                    title = 'Ramp cards ('+feature+malus_text+'): '+str(len(cards_list_sorted))
+                    html += '    <article>'+'\n'
+                    html += '      <details>'+'\n'
+                    html += '        <summary>'+title+'</summary>'+'\n'
+                    html += print_cards_list(cards_list_sorted, limit = max_list_items,
+                                             outformat = outformat, return_str = True,
+                                             card_feat = 'ramps')
+                    html += '      </details>'+'\n'
+                    html += '    </article>'+'\n'
         html += '  </section>'+'\n'
         print(html)
 
     if outformat == 'console':
         print('Ramp cards:', len(cards_ramp_cards))
         print('')
-        for feature, cards_list in cards_ramp_cards_by_features.items():
-            cards_list_sorted = sort_cards_by_cmc_and_name(cards_list)
-            print('   Ramp cards ('+feature+'):', len(cards_list_sorted))
-            print('')
-            print_cards_list(cards_list_sorted, limit = max_list_items, indent = 6)
-            print('')
+        for feature, cards_list_by_malus in cards_ramp_cards_by_features.items():
+            for malus in ['no malus', 'malus']:
+                if malus in cards_list_by_malus:
+                    cards_list = cards_list_by_malus[malus]
+                    cards_list_sorted = sort_cards_by_cmc_and_name(cards_list)
+                    malus_text = ', with '+malus if malus == 'malus' else ''
+                    print('   Ramp cards ('+feature+malus_text+'):', len(cards_list_sorted))
+                    print('')
+                    print_cards_list(cards_list_sorted, limit = max_list_items, indent = 6)
+                    print('')
 
     return cards_ramp_cards_selected
 
@@ -2057,7 +2354,7 @@ def assist_draw_cards(cards, land_types_invalid_regex, max_list_items = None, ou
                         and not filter_lands(card)):
                     cards_draw.append(card)
 
-                    if (list(search_strings(r'(whenever|everytime|at begining|upkeep|\\{t\\}:)',
+                    if (list(search_strings(r'(whenever|everytime|at begining|upkeep|\\{\w\\}:)',
                                            oracle_texts_low))
                             and not list(in_strings("next turn's upkeep", oracle_texts_low))
                             and not list(in_strings('Sacrifice '+card['name'], oracle_texts))
@@ -2066,7 +2363,7 @@ def assist_draw_cards(cards, land_types_invalid_regex, max_list_items = None, ou
                                 oracle_texts_low))):
                         cards_draw_repeating.append(card)
 
-                    elif list(search_strings(r'draws? (two|three|four|five|six|seven|X) ',
+                    elif list(search_strings(r'draws? (two|three|four|five|six|seven|x) ',
                                              oracle_texts_low)):
                         cards_draw_multiple.append(card)
                     break
@@ -2081,14 +2378,23 @@ def assist_draw_cards(cards, land_types_invalid_regex, max_list_items = None, ou
         in_strings('connives', map(str.lower, get_oracle_texts(c))))), cards))
 
     draw_output_data = {
-        'repeating': cards_draw_repeating,
-        'multiple': cards_draw_multiple,
-        'connives': connives,
-        'not repeating, CMC <= 3': cards_draw_not_repeating_cmc_3}
+        'repeating': organize_by_type(cards_draw_repeating),
+        'multiple': organize_by_type(cards_draw_multiple),
+        'connives': organize_by_type(connives),
+        'not repeating, CMC <= 3': organize_by_type(cards_draw_not_repeating_cmc_3)}
+
+    draw_stat_data = {
+        'Draw cards (total)': len(cards_draw)}
+    for feature, cards_list_by_type in draw_output_data.items():
+        for card_type, cards_list in cards_list_by_type.items():
+            if cards_list:
+                title = 'Draw cards ('+feature+', '+card_type+')'
+                draw_stat_data[title] = len(cards_list)
 
     cards_draw_selected = []
-    for cards_list in draw_output_data.values():
-        cards_draw_selected += sort_cards_by_cmc_and_name(cards_list)[:max_list_items]
+    for cards_list_by_type in draw_output_data.values():
+        for cards_list in cards_list_by_type.values():
+            cards_draw_selected += sort_cards_by_cmc_and_name(cards_list)[:max_list_items]
 
     if outformat == 'html':
         html = ''
@@ -2096,17 +2402,25 @@ def assist_draw_cards(cards, land_types_invalid_regex, max_list_items = None, ou
         html += '    <h3 id="draw-cards">Draw cards</h3>\n'
         html += '    <h4>Stats</h4>'+'\n'
         html += '    <dl>'+'\n'
-        html += '      <dt>Draw cards (total)</dt>'+'\n'
-        html += '      <dd>'+str(len(cards_draw))+'</dd>'+'\n'
+        for title, cards_count in draw_stat_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(cards_count)+'</dd>'+'\n'
         html += '    </dl>'+'\n'
         html += '    <h4>Draw cards by feature</h4>'+'\n'
-        for feature, cards_list in draw_output_data.items():
-            title = 'Draw cards ('+feature+'): '+str(len(cards_list))
+        for feature, cards_list_by_type in draw_output_data.items():
+            title = 'Draw cards ('+feature+')'
             html += '    <article>'+'\n'
             html += '      <details>'+'\n'
             html += '        <summary>'+title+'</summary>'+'\n'
-            html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
-                                     limit = max_list_items, outformat = outformat, return_str = True)
+            for card_type, cards_list in cards_list_by_type.items():
+                if cards_list:
+                    title = 'Draw cards ('+feature+', '+card_type+'): '+str(len(cards_list))
+                    html += '        <details>'+'\n'
+                    html += '          <summary>'+title+'</summary>'+'\n'
+                    html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                             limit = max_list_items, outformat = outformat,
+                                             return_str = True, card_feat = 'draws')
+                    html += '        </details>'+'\n'
             html += '      </details>'+'\n'
             html += '    </article>'+'\n'
         html += '  </section>'+'\n'
@@ -2115,13 +2429,15 @@ def assist_draw_cards(cards, land_types_invalid_regex, max_list_items = None, ou
     if outformat == 'console':
         print('Draw cards:', len(cards_draw))
         print('')
-        for feature, cards_list in draw_output_data.items():
-            title = '   Draw cards ('+feature+'): '+str(len(cards_list))
-            print(title)
-            print('')
-            print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
-                             indent = 6, outformat = outformat)
-            print('')
+        for feature, cards_list_by_type in draw_output_data.items():
+            for card_type, cards_list in cards_list_by_type.items():
+                if cards_list:
+                    title = 'Draw cards ('+feature+', '+card_type+'): '+str(len(cards_list))
+                    print(title)
+                    print('')
+                    print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                    indent = 6, outformat = outformat)
+                    print('')
         print('')
 
     return cards_draw_selected
@@ -2274,7 +2590,8 @@ def assist_tutor_cards(cards, land_types_invalid_regex, max_list_items = None, o
                 html += '      <details>'+'\n'
                 html += '        <summary>'+title+'</summary>'+'\n'
                 html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
-                                         limit = max_list_items, outformat = outformat, return_str = True)
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'tutors')
                 html += '      </details>'+'\n'
                 html += '    </article>'+'\n'
         html += '  </section>'+'\n'
@@ -2519,7 +2836,8 @@ def assist_removal_cards(cards, max_list_items = None, outformat = 'console'):
                 html += '      <details>'+'\n'
                 html += '        <summary>'+title+'</summary>'+'\n'
                 html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
-                                         limit = max_list_items, outformat = outformat, return_str = True)
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'removal')
                 html += '      </details>'+'\n'
                 html += '    </article>'+'\n'
         html += '  </section>'+'\n'
@@ -2647,7 +2965,8 @@ def assist_disabling_cards(cards, max_list_items = None, outformat = 'console'):
                 html += '      <details>'+'\n'
                 html += '        <summary>'+title+'</summary>'+'\n'
                 html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
-                                         limit = max_list_items, outformat = outformat, return_str = True)
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'disabling')
                 html += '      </details>'+'\n'
                 html += '    </article>'+'\n'
         html += '  </section>'+'\n'
@@ -2673,7 +2992,8 @@ def assist_disabling_cards(cards, max_list_items = None, outformat = 'console'):
 def assist_wipe_cards(cards, max_list_items = None, outformat = 'console'):
     """Show pre-selected board wipe cards organised by features, for the user to select some"""
 
-    cards_wipe = []
+    no_feature = 'not selective'
+    cards_wipe_by_feature = {}
     if WIPE_CARDS_REGEX:
         for card in cards:
             oracle_texts = list(get_oracle_texts(card))
@@ -2682,36 +3002,142 @@ def assist_wipe_cards(cards, max_list_items = None, outformat = 'console'):
                 if (list(search_strings(regexp, oracle_texts_low))
                         and not list(search_strings(WIPE_CARDS_EXCLUDE_REGEX,
                                                     oracle_texts_low))):
-                    cards_wipe.append(card)
+                    card_added = False
+                    for feature, regexes in WIPE_CARDS_BY_FEATURE_REGEX.items():
+                        for reg in regexes:
+                            if list(search_strings(reg, oracle_texts_low)):
+                                if feature not in cards_wipe_by_feature:
+                                    cards_wipe_by_feature[feature] = []
+                                cards_wipe_by_feature[feature].append(card)
+                                card_added = True
+                                break
+                    if not card_added:
+                        if no_feature not in cards_wipe_by_feature:
+                            cards_wipe_by_feature[no_feature] = []
+                        cards_wipe_by_feature[no_feature].append(card)
                     break
 
-    cards_wipe_sorted = sort_cards_by_cmc_and_name(cards_wipe)
-    cards_wipe_selected = cards_wipe_sorted[:max_list_items]
+    cards_wipe_selected = []
+    for feature in cards_wipe_by_feature:
+        cards_wipe_by_feature[feature] = sort_cards_by_cmc_and_name(cards_wipe_by_feature[feature])
+        cards_wipe_selected += cards_wipe_by_feature[feature][:max_list_items]
+
+    features = cards_wipe_by_feature.keys()
+    features_sorted = tuple(('only affect opponent', no_feature,
+                             *(sorted(set(features) - {'only affect opponent', no_feature}))))
 
     if outformat == 'html':
         html = ''
         html += '  <section>'+'\n'
         html += '    <h3 id="wipe-cards">Board wipe cards</h3>\n'
-        title = 'Board wipe cards: '+str(len(cards_wipe))
-        html += '    <article>'+'\n'
-        html += '      <details>'+'\n'
-        html += '        <summary>'+title+'</summary>'+'\n'
-        html += print_cards_list(cards_wipe_sorted, limit = max_list_items,
-                                 outformat = outformat, return_str = True)
-        html += '      </details>'+'\n'
-        html += '    </article>'+'\n'
+        for feature in features_sorted:
+            cards_list = cards_wipe_by_feature[feature]
+            title = 'Board wipe cards ('+feature+'): '+str(len(cards_list))
+            html += '    <article>'+'\n'
+            html += '      <details>'+'\n'
+            html += '        <summary>'+title+'</summary>'+'\n'
+            html += print_cards_list(cards_list, limit = max_list_items,
+                                     outformat = outformat, return_str = True, card_feat = 'wipe')
+            html += '      </details>'+'\n'
+            html += '    </article>'+'\n'
         html += '  </section>'+'\n'
         print(html)
 
     if outformat == 'console':
-        title = 'Board wipe cards: '+str(len(cards_wipe))
-        print(title)
-        print('')
-        print_cards_list(cards_wipe_sorted, limit = max_list_items, indent = 3,
-                         outformat = outformat)
-        print('')
+        for feature in features_sorted:
+            cards_list = cards_wipe_by_feature[feature]
+            title = 'Board wipe cards ('+feature+'): '+str(len(cards_list))
+            print(title)
+            print('')
+            print_cards_list(cards_list, limit = max_list_items, indent = 3,
+                             outformat = outformat)
+            print('')
 
     return cards_wipe_selected
+
+def assist_no_pay_cards(cards, max_list_items = None, outformat = 'console'):
+    """Show pre-selected cards that allow to play without paying mana cost organised by features,
+       for the user to select some"""
+
+    cards_no_pay = {}
+    if NO_PAY_CARDS_REGEX:
+        print('DEBUG Analysing no pay card ...', file=sys.stderr)
+        previous_exile = []
+        for card in cards:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_low = list(map(str.lower, oracle_texts))
+            for source, regexes in NO_PAY_CARDS_REGEX.items():
+                for regexp in regexes:
+                    if (list(search_strings(regexp, oracle_texts_low))
+                            and not list(search_strings(NO_PAY_CARDS_EXCLUDE_REGEX,
+                                                        oracle_texts_low))):
+                        if source == 'exile, other' and card in previous_exile:
+                            continue
+                        if source not in cards_no_pay:
+                            cards_no_pay[source] = []
+                        cards_no_pay[source].append(card)
+                        if source != 'exile, other':
+                            previous_exile.append(card)
+                        break
+
+    no_pay_stats_data = {'No pay cards (total)': sum(map(len, cards_no_pay.values()))}
+    no_pay_output_data = {'No pay cards by source': {}}
+    cards_no_pay_keys = list(NO_PAY_CARDS_REGEX.keys())
+    for source in cards_no_pay_keys:
+        if source in cards_no_pay:
+            cards_list = cards_no_pay[source]
+            title = 'No pay cards ('+source+')'
+            no_pay_stats_data[title] = len(cards_list)
+            no_pay_output_data['No pay cards by source'][title] = sort_cards_by_cmc_and_name(
+                cards_list)
+            if source == 'exile, suspend':
+                no_pay_output_data['No pay cards by source'][title].reverse()
+
+    cards_no_pay_selected = []
+    for data in no_pay_output_data.values():
+        for cards_list in data.values():
+            cards_no_pay_selected += cards_list[:max_list_items]
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h3 id="no-pay-cards">No pay cards</h3>\n'
+        html += '    <h4>Stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in no_pay_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in no_pay_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(cards_list, limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'no-pay')
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, count in no_pay_stats_data.items():
+            print(title+':', count)
+        print('')
+        for section, data in no_pay_output_data.items():
+            print(section)
+            print('')
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print('')
+                print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 6, outformat = outformat)
+                print('')
+        print('')
+
+    return cards_no_pay_selected
 
 def assist_graveyard_recursion_cards(cards, max_list_items = None, outformat = 'console'):
     """Show pre-selected graveyard recursion cards organised by features, for the user to select some"""
@@ -2810,7 +3236,8 @@ def assist_graveyard_recursion_cards(cards, max_list_items = None, outformat = '
                 html += '      <details>'+'\n'
                 html += '        <summary>'+title+'</summary>'+'\n'
                 html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
-                                         limit = max_list_items, outformat = outformat, return_str = True)
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'graveyard-recursion')
                 html += '      </details>'+'\n'
                 html += '    </article>'+'\n'
         html += '  </section>'+'\n'
@@ -2889,7 +3316,8 @@ def assist_graveyard_hate_cards(cards, max_list_items = None, outformat = 'conso
                 html += '      <details>'+'\n'
                 html += '        <summary>'+title+'</summary>'+'\n'
                 html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
-                                         limit = max_list_items, outformat = outformat, return_str = True)
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'graveyard-hate')
                 html += '      </details>'+'\n'
                 html += '    </article>'+'\n'
         html += '  </section>'+'\n'
@@ -2911,321 +3339,6 @@ def assist_graveyard_hate_cards(cards, max_list_items = None, outformat = 'conso
         print('')
 
     return cards_grav_hate_selected
-
-def assist_best_cards(cards, max_list_items = None, outformat = 'console'):
-    """Show pre-selected best cards organised by features, for the user to select some"""
-
-    print('DEBUG Analysing best cards (power+toughness to CMC ratio, and more) ...',
-          file=sys.stderr)
-    best_cards_selected = []
-
-    # Best creature power and toughness to cmc
-    powr_tough_to_cmc = {}
-    for card in cards:
-        faces = [card]
-        if 'card_faces' in card:
-            faces = card['card_faces']
-
-        for face in faces:
-            if ('toughness' in face and 'cmc' in face and '*' not in face['toughness']
-                    and 'power' in face and 'cmc' in face and '*' not in face['power']
-                    and 'type_line' in face and 'Vehicle' not in face['type_line']):
-                power = float(face['power'])
-                toughness = float(face['toughness'])
-                cmc = float(face['cmc']) if float(face['cmc']) > 1 else 1.0
-                ratio = round((power + toughness) / cmc, 3)
-
-                face_text = face['oracle_text'] if 'oracle_text' in face else ''
-
-                feature = 'no feature'
-                if 'keywords' in face:
-                    if 'Double strike' in face['keywords']:
-                        feature = 'Double strike'
-                    elif 'First strike' in face['keywords']:
-                        feature = 'First strike'
-                    elif 'Flying' in face['keywords']:
-                        feature = 'Flying'
-                    # TODO evasion cards (except flying)
-
-                defender = ('Defender' if bool(re.search('(^|[,.] )Defender', face_text))
-                            else 'not Defender')
-
-                malus = 'no malus'
-                if face_text:
-                    for regexp in CREATURE_MALUS_REGEXES:
-                        reg = regexp.replace('<name>', face['name'])
-                        if bool(re.search(reg, face_text)):
-                            malus = 'malus'
-                            break
-
-                if feature not in powr_tough_to_cmc:
-                    powr_tough_to_cmc[feature] = {}
-
-                if malus not in powr_tough_to_cmc[feature]:
-                    powr_tough_to_cmc[feature][malus] = {}
-
-                if defender not in powr_tough_to_cmc[feature][malus]:
-                    powr_tough_to_cmc[feature][malus][defender] = {}
-
-                if ratio not in powr_tough_to_cmc[feature][malus][defender]:
-                    powr_tough_to_cmc[feature][malus][defender][ratio] = []
-
-                if card not in powr_tough_to_cmc[feature][malus][defender][ratio]:
-                    powr_tough_to_cmc[feature][malus][defender][ratio].append(card)
-
-    powr_tough_to_cmc_ratio2 = {}
-    features = powr_tough_to_cmc.keys()
-    for feature in features:
-        if ('no malus' in powr_tough_to_cmc[feature]
-                and 'not Defender' in powr_tough_to_cmc[feature]['no malus']):
-            for ratio, cards_list in powr_tough_to_cmc[feature]['no malus']['not Defender'].items():
-                if ratio == 2.0:
-                    for card in cards_list:
-                        faces = [card]
-                        if 'card_faces' in card:
-                            faces = card['card_faces']
-                        for face in faces:
-                            power = float(face['power'])
-                            if power == 0.0:
-                                continue
-                            keywords = len(face['keywords'])
-                            if power not in powr_tough_to_cmc_ratio2:
-                                powr_tough_to_cmc_ratio2[power] = {}
-                            if keywords not in powr_tough_to_cmc_ratio2[power]:
-                                powr_tough_to_cmc_ratio2[power][keywords] = []
-                            if card not in powr_tough_to_cmc_ratio2[power][keywords]:
-                                powr_tough_to_cmc_ratio2[power][keywords].append(card)
-
-    powers = powr_tough_to_cmc_ratio2.keys()
-    for power in powers:
-        for keywords in powr_tough_to_cmc_ratio2[power]:
-            powr_tough_to_cmc_ratio2[power][keywords] = sort_cards_by_cmc_and_name(
-                powr_tough_to_cmc_ratio2[power][keywords])
-        powr_tough_to_cmc_ratio2[power] = dict(sorted(
-            powr_tough_to_cmc_ratio2[power].items(), reverse = True))
-    powr_tough_to_cmc_ratio2 = dict(sorted(powr_tough_to_cmc_ratio2.items(), reverse = True))
-
-    for feature in features:
-        for malus in powr_tough_to_cmc[feature]:
-            for defender in powr_tough_to_cmc[feature][malus]:
-                for ratio in powr_tough_to_cmc[feature][malus][defender]:
-                    powr_tough_to_cmc[feature][malus][defender][ratio] = sort_cards_by_cmc_and_name(
-                        powr_tough_to_cmc[feature][malus][defender][ratio])
-                powr_tough_to_cmc[feature][malus][defender] = dict(sorted(
-                    powr_tough_to_cmc[feature][malus][defender].items(), reverse = True))
-            powr_tough_to_cmc[feature][malus] = dict(sorted(
-                powr_tough_to_cmc[feature][malus].items(), reverse = True))
-        powr_tough_to_cmc[feature] = dict(sorted(
-            powr_tough_to_cmc[feature].items(), reverse = True))
-    powr_tough_to_cmc = dict(sorted(powr_tough_to_cmc.items()))
-
-    # Best creature amount of (evergreen?) keywords by cmc
-    keywords_to_cmc = {}
-    for card in cards:
-        if 'card_faces' in card:
-            for face in card['card_faces']:
-                if ('keywords' in face and face['keywords'] and 'cmc' in face
-                        and 'type_line' in face and 'Vehicle' not in face['type_line']
-                        and 'Stickers' not in face['type_line']):
-                    keywords = len(face['keywords'])
-                    cmc = float(face['cmc']) if float(face['cmc']) > 1 else 1.0
-                    ratio = round((keywords) / cmc, 3)
-                    if ratio not in keywords_to_cmc:
-                        keywords_to_cmc[ratio] = []
-                    keywords_to_cmc[ratio].append(card)
-        else:
-            if ('keywords' in card and card['keywords'] and 'cmc' in card
-                    and 'type_line' in card and 'Vehicle' not in card['type_line']
-                    and 'Stickers' not in card['type_line']):
-                keywords = len(card['keywords'])
-                cmc = float(card['cmc']) if float(card['cmc']) > 1 else 1.0
-                ratio = round(keywords / cmc, 3)
-                if ratio not in keywords_to_cmc:
-                    keywords_to_cmc[ratio] = []
-                keywords_to_cmc[ratio].append(card)
-    keywords_to_cmc = dict(sorted(keywords_to_cmc.items(), reverse = True))
-
-    # Best creature with first|double strike and deathtouch
-    deathtouch_strike = []
-    for card in cards:
-        if 'card_faces' in card:
-            for face in card['card_faces']:
-                if ('keywords' in face and 'Deathtouch' in face['keywords']
-                        and ('Double strike' in face['keywords']
-                             or 'First strike' in face['keywords'])):
-                    deathtouch_strike.append(card)
-        else:
-            if ('keywords' in card and 'Deathtouch' in card['keywords']
-                    and ('Double strike' in card['keywords']
-                            or 'First strike' in card['keywords'])):
-                deathtouch_strike.append(card)
-
-    # Best creature with flying and deathtouch
-    deathtouch_flying = []
-    for card in cards:
-        if 'card_faces' in card:
-            for face in card['card_faces']:
-                if ('keywords' in face and 'Deathtouch' in face['keywords']
-                        and 'Flying' in face['keywords']):
-                    deathtouch_flying.append(card)
-        else:
-            if ('keywords' in card and 'Deathtouch' in card['keywords']
-                    and 'Flying' in card['keywords']):
-                deathtouch_flying.append(card)
-
-    damage_to_cmc = {}
-    for card in cards:
-        if 'card_faces' in card:
-            for face in card['card_faces']:
-                if ('type_line' in face and face['type_line'] in ['Instant', 'Sorcery']
-                        and 'oracle_text' in face and 'cmc' in face):
-                    damage = None
-                    matches = re.search('deals ([0-9x]+) damage', face['oracle_text'].lower())
-                    if matches and matches.group(1) != 'x':
-                        damage = float(matches.group(1))
-                    if not damage:
-                        continue
-                    cmc = float(face['cmc']) if float(face['cmc']) > 1 else 1.0
-                    ratio = round(damage / cmc, 3)
-                    if ratio not in damage_to_cmc:
-                        damage_to_cmc[ratio] = []
-                    damage_to_cmc[ratio].append(card)
-        else:
-            if ('type_line' in card and card['type_line'] in ['Instant', 'Sorcery']
-                    and 'oracle_text' in card and 'cmc' in card):
-                damage = None
-                matches = re.search('deals ([0-9x]+) damage', card['oracle_text'].lower())
-                if matches and matches.group(1) != 'x':
-                    damage = float(matches.group(1))
-                if not damage:
-                    continue
-                cmc = float(card['cmc']) if float(card['cmc']) > 1 else 1.0
-                ratio = round(damage / cmc, 3)
-                if ratio not in damage_to_cmc:
-                    damage_to_cmc[ratio] = []
-                damage_to_cmc[ratio].append(card)
-    damage_to_cmc = dict(sorted(damage_to_cmc.items(), reverse = True))
-
-    best_cards_output_data = {}
-    for feature, cards_by_malus in powr_tough_to_cmc.items():
-        for malus, cards_by_defender in cards_by_malus.items():
-            for defender, cards_by_ratio in cards_by_defender.items():
-                if not cards_by_ratio or (
-                        feature in ['Double strike', 'First strike'] and defender == 'Defender'):
-                    continue
-                feat_text = ''
-                min_ratio = 2
-                if feature != 'no feature':
-                    feat_text = feature+' '
-                    if feature in ['Double strike', 'First strike']:
-                        min_ratio = 0.5
-                title = ('Best '+feat_text+'power+toughness to CMC ratio '
-                         '('+malus+', '+defender+', ratio > '+str(min_ratio)+')')
-                best_cards_output_data[title] = {'min_ratio': min_ratio,
-                                                 'ratio:cards': cards_by_ratio}
-
-    best_cards_output_data |= {
-        'Best power+toughness to CMC ratio (no malus, not Defender, ratio = 2)': {
-            'strengh:cards': powr_tough_to_cmc_ratio2},
-        'Best keywords count to CMC ratio (count ratio > 1)': {
-            'min_ratio': 1,
-            'ratio:cards': keywords_to_cmc},
-        'Best Deathtouch + First strike/Double strike': {
-            'cards': deathtouch_strike},
-        'Best Deathtouch + Flying': {
-            'cards': deathtouch_flying},
-        'Best damage to CMC ratio': {
-            'min_ratio': 1.01,
-            'ratio:cards': damage_to_cmc},
-    }
-
-    for data in best_cards_output_data.values():
-        if 'ratio:cards' in data:
-            min_ratio = data['min_ratio'] if 'min_ratio' in data else 0
-            for ratio, cards_list in data['ratio:cards'].items():
-                if ratio <= min_ratio:
-                    break
-                best_cards_selected += sort_cards_by_cmc_and_name(cards_list)[:max_list_items]
-        if 'cards' in data:
-            best_cards_selected += sort_cards_by_cmc_and_name(data['cards'])[:max_list_items]
-        if 'strengh:cards' in data:
-            for power, cards_list_by_keywords in data['strengh:cards'].items():
-                for keywords, cards_list in cards_list_by_keywords.items():
-                    best_cards_selected += sort_cards_by_cmc_and_name(cards_list)[:max_list_items]
-
-    if outformat == 'html':
-        html = ''
-        html += '  <section>'+'\n'
-        html += '    <h3 id="best-cards">Best cards</h3>\n'
-        for title, data in best_cards_output_data.items():
-            html += '    <article>'+'\n'
-            html += '      <details>'+'\n'
-            html += '        <summary>'+title+'</summary>'+'\n'
-            if 'ratio:cards' in data:
-                min_ratio = data['min_ratio'] if 'min_ratio' in data else 0
-                for ratio, cards_list in data['ratio:cards'].items():
-                    if ratio <= min_ratio:
-                        break
-                    html += '      <h5 class="ratio">ratio '+str(ratio)+'</h5>'+'\n'
-                    html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
-                                             limit=max_list_items,
-                                             outformat = outformat,
-                                             return_str = True)
-            if 'cards' in data:
-                html += print_cards_list(sort_cards_by_cmc_and_name(data['cards']),
-                                         limit = max_list_items, outformat = outformat,
-                                         return_str = True)
-
-            if 'strengh:cards' in data:
-                for power, cards_list_by_keywords in data['strengh:cards'].items():
-                    html += '        <details>'+'\n'
-                    html += '          <summary>power '+str(power)+'</summary>'+'\n'
-                    for keywords, cards_list in cards_list_by_keywords.items():
-                        html += '          <h6 class="keywords">keywords: '+str(keywords)+'</h6>\n'
-                        html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
-                                                 limit=max_list_items,
-                                                 outformat = outformat,
-                                                 return_str = True)
-                    html += '        </details>'+'\n'
-
-            html += '      </details>'+'\n'
-            html += '    </article>'+'\n'
-        html += '  </section>'+'\n'
-        print(html)
-
-    if outformat == 'console':
-        for title, data in best_cards_output_data.items():
-            print(title)
-            print('')
-            if 'ratio:cards' in data:
-                min_ratio = data['min_ratio'] if 'min_ratio' in data else 0
-                for ratio, cards_list in data['ratio:cards'].items():
-                    if ratio <= min_ratio:
-                        break
-                    print('  ratio', ratio)
-                    print('')
-                    print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit=max_list_items,
-                                    indent = 6, outformat = outformat)
-                print('')
-            if 'cards' in data:
-                print_cards_list(sort_cards_by_cmc_and_name(data['cards']), limit = max_list_items,
-                                 indent = 6, outformat = outformat)
-                print('')
-            if 'strengh:cards' in data:
-                for power, cards_list_by_keywords in data['strengh:cards'].items():
-                    print('  power', power)
-                    print('')
-                    for keywords, cards_list in cards_list_by_keywords.items():
-                        print('     keywords', keywords)
-                        print('')
-                        print_cards_list(sort_cards_by_cmc_and_name(cards_list),
-                                         limit=max_list_items,
-                                         indent = 9, outformat = outformat)
-                        print('')
-                print('')
-        print('')
-
-    return best_cards_selected
 
 def assist_copy_cards(cards, max_list_items = None, outformat = 'console'):
     """Show pre-selected copy cards organised by features, for the user to select some"""
@@ -3329,7 +3442,8 @@ def assist_copy_cards(cards, max_list_items = None, outformat = 'console'):
                 html += '      <details>'+'\n'
                 html += '        <summary>'+title+'</summary>'+'\n'
                 html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
-                                         limit = max_list_items, outformat = outformat, return_str = True)
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'copy')
                 html += '      </details>'+'\n'
                 html += '    </article>'+'\n'
         html += '  </section>'+'\n'
@@ -3351,6 +3465,662 @@ def assist_copy_cards(cards, max_list_items = None, outformat = 'console'):
         print('')
 
     return copy_cards_selected
+
+def assist_creature_effects(cards, max_list_items = None, outformat = 'console'):
+    """Show pre-selected creature effects cards organised by features, for the user to select some"""
+
+    features = {
+        'Double strike': 'double strike',
+        'First strike': 'first strike',
+        'Indestructible': 'indestructible',
+        'Deathtouch': 'deathtouch',
+        'Trample': 'trample',
+        'Flying': 'flying',
+        'Reach': 'reach',
+        'Vigilance': 'vigilance',
+        'Haste': 'haste',
+        '+X/+X': r'\+[0-9]?[0-9x]/\+[0-9]?[0-9x]',
+        '-X/-X': '-[0-9]?[0-9x]/-[0-9]?[0-9x]',
+        'Regenerate': (r'regenerate|"(\{\w+\}|remove [^.]+ counter( from this creature)?): '
+                       r'regenerate this creature\."'),
+        #'Evade blocking': "menace|intimidate|skulk|fear( |[,.])|can be blocked only by|can't be blocked except by",
+        'Protection from spell': 'hexproof|ward|shroud',
+        'Counters': '[^.]+ counter',
+        'Prevent damage': 'prevent [^.]*damage',
+        'Flanking': 'flanking',
+        'Backup': 'backup',
+        'other': '.+'}
+
+    target_regexes = {
+        'yours, improvments': (r'([:,.]\s*|''\n'r'\s*|(all|each|every|other|attacking|blocking) )'
+                               'creatures you control (gains?|gets?|have|has)'),
+        "opponent's, affections": (r'([:,.\s*]|''\n'r'\s*|(all|each|every|other|attacking|blocking) )'
+                                   'creatures '+PLAYER_REGEXP.replace('you|', '')
+                                   +' control (loses?|gets?|have|has)'),
+        'target, improvments': '((this|that|enchanted|equipped|target( [^.]+)?) )?creature( [^.]+)? (gains?|gets?|have|has)',
+        'target, affection': '(this|(that|enchanted|equipped|target( [^.]+)?) )?creature( [^.]+)? loses?'}
+
+    exclude_prefixes = [
+        r'enters the battlefield( under your control|, if it was kicked)?(,\s*)?',
+        r'and at least two other creatures attack(,\s*)?',
+        r'this ability has resolved this turn(,\s*)?',
+        r'if creatures you control have [^.]+(,\s*)?',
+        r'as long as you have [^.]+ life(,\s*)?',
+        r'as long as [^.]+ has [^.]+ counters on it(,\s*)?',
+        '(sacrifice|discard) [^.]+:',
+        r'whenever you cast an? [^.]*spell [^.]*(,\s*)?',
+        r'is dealt (noncombat|[^.]+) damage(,\s*)?',
+        'attacks while you control a creature with power [^.]+',
+        r'whenever [^.]+ blocks or becomes blocked by a creature this combat(,\s*)?',
+        r'tap [^.]+ you control:',
+        ]
+
+    other_excludes = [
+        r'becomes [^.]+ creature and loses?',
+        'creature [^.]*('+PLAYER_REGEXP+'|and|player) loses? [^.]*life',
+        'each opponent dealt combat damage this game by a creature named [^.]+ loses? [^.]*life',
+        'loses? all other card types and creature types',
+        'flip a coin until you lose a flip',
+        ]
+
+    target_excludes = [
+        'whenever a creature an opponent controls dies, [^.]+ gets',
+        'whenever you sacrifice a permanent, [^.]+ gets',
+        "creature has first strike as long as it's blocking or blocked by",
+        'target dwarf creature gets ',
+        'target snow creature gains',
+        'if that creature has power [^.]+, it gains',
+        'whenever [^.]+ blocks a creature [^.]+, [^.]+ gets',
+        'if you control [^.]+ snow permanents, the creature you control gets',
+        "noncreature artifacts you control( can't be enchanted, they)? have indestructible",
+        'target creature with power 5 or greater gains',
+        'if mana from a treasure was spent to activate this ability, that creature also gains',
+        'whenever equipped creature becomes blocked by one or more colorless creatures, it gains',
+        'whenever you cast an artifact spell, you may have target creature get',
+        'when [^.]+ enters the battlefield, another target creature you control gains',
+        'whenever another creature enters the battlefield under your control, [^.]+ gains',
+        'whenever a land enters the battlefield under your control, choose one',
+        ('if there are [^.]+ creature cards in your graveyard, [^.]+ target creature you control'
+            '( and it)? gains'),
+        # 'creature has [^.]+ as long as you control [^.]+', # too broad
+        'target goblin creature( you control)? (gains|gets|have|has)',
+        "sacrifice [^.]+: up to one target creature you( don't)? control gets",
+        'when [^.]+ dies, target creature( an opponent controls)? gets',
+        'when [^.]+ enters the battlefield, you may have target creature get',
+        'when [^.]+ dies, choose one',
+        'target creature with flying gets',
+        ("whenever this creature mutates, target creature( an opponent controls| you don't control)"
+         '? gets'),
+        'creature tokens get',
+        'enchant creature card in a graveyard',
+        'when you do, target creature( '+PLAYER_REGEXP+' controls)? gets',
+        ]
+
+    counters_excludes = [
+        'shadow counter',
+        'as long as a creature (have|has) [^.]+ counter on it',
+        'players dealt combat damage by this creature also get [^.]+ poison counter',
+        # infect
+        ('this creature deals damage to creatures in the form of -1/-1 counters and to players in '
+         'the form of poison counters'),
+        # corrupted
+        '(have|has) three or more poison counters',
+        # ward
+        ('whenever (this|equipped) creature becomes the target of a spell or ability an opponent '
+         'controls, counter it unless that player pays'),
+        # ('whenever a creature you control with deathtouch deals combat damage to a player, that '
+        #  'player gets two poison counters'),
+        ('whenever this creature deals damage to a player, that player gets a poison counter'),
+        # evolve
+        ('whenever a creature enters the battlefield under your control, if that creature has '
+         r'greater power or toughness than this creature, put a \+1/\+1 counter on this creature'),
+        # adapt
+        (r'if this creature has no \+1/\+1 counters on it, put [^.]+ \+1/\+1 counters on it'),
+        ]
+
+    plus_x_counters_regex = '(this|that|enchanted|equipped|target) creature (gains?|gets?|have|has)'
+
+    plus_x_excludes = [
+        # bloodthirst
+        ('if an opponent was dealt damage this turn, this creature enters the battlefield with a '
+         r'\+1/\+1 counter on it\.'),
+        ]
+
+    minus_x_excludes = [
+        # flanking
+        ('whenever a creature without flanking blocks this creature, the blocking creature gets '
+         r'-1/-1 until end of turn\.'),
+        ]
+
+    cards_creature_effects = {}
+    for card in cards:
+
+        # skip instants and sorceries
+        # TODO only skip relevant face
+        # TODO do not exclude instant or sorcery that puts counter on card ('Heightened Reflexes')
+        skip = False
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if 'type_line' in face and face['type_line'] in ['Instant', 'Sorcery']:
+                    skip = True
+                    break
+        elif 'type_line' in card and card['type_line'] in ['Instant', 'Sorcery']:
+            skip = True
+        if skip:
+            continue
+
+        oracle_texts = get_oracle_texts(card)
+        oracle_texts_low = list(map(str.lower, oracle_texts))
+
+        added = False
+        skipped_for_target = {}
+        for feature, feature_regex in features.items():
+            for target, target_regex in target_regexes.items():
+                if target not in skipped_for_target:
+                    skipped_for_target[target] = False
+                # TODO handle those with two features
+                # obtain = '(gains?|gets?|have|has)'
+                # if 'loses?' in target_regex:
+                #     obtain = 'loses?'
+                # regex = target_regex+' ([^.]+ and '+obtain+' )?('+feature_regex+')'
+                regex = target_regex+' ('+feature_regex+')'
+                exclude_regex = '('+('|'.join(exclude_prefixes))+r')\s*'+regex
+                if (list(search_strings(regex, oracle_texts_low))
+                        and not list(search_strings(exclude_regex, oracle_texts_low))):
+                    skip = False
+                    if target.startswith('target'):
+                        for exc_regex in target_excludes:
+                            if list(search_strings(exc_regex, oracle_texts_low)):
+                                skip = True
+                                break
+                        if feature == '+X/+X':
+                            if not list(search_strings(plus_x_counters_regex, oracle_texts_low)):
+                                skip = True
+                            else:
+                                for exc_regex in plus_x_excludes:
+                                    if list(search_strings(exc_regex, oracle_texts_low)):
+                                        skip = True
+                                        break
+                        elif feature == '-X/-X':
+                            for exc_regex in minus_x_excludes:
+                                if list(search_strings(exc_regex, oracle_texts_low)):
+                                    skip = True
+                                    break
+                        elif feature == 'Counters':
+                            for exc_regex in counters_excludes:
+                                if list(search_strings(exc_regex, oracle_texts_low)):
+                                    skip = True
+                                    break
+                    if not skip and feature == 'other' and not skipped_for_target[target]:
+                        for exc_regex in other_excludes:
+                            if list(search_strings(exc_regex, oracle_texts_low)):
+                                skip = True
+                                break
+                    if skip:
+                        skipped_for_target[target] = True
+                        continue
+                    if target not in cards_creature_effects:
+                        cards_creature_effects[target] = {}
+                    if feature not in cards_creature_effects[target]:
+                        cards_creature_effects[target][feature] = []
+                    if not added or feature != 'other':
+                        cards_creature_effects[target][feature].append(card)
+                        added = True
+                        break
+
+    creature_effects_stats_data = {}
+    creature_effects_output_data = {}
+    cards_creature_effects_selected = []
+    for target in target_regexes:
+        if target in cards_creature_effects:
+            cards_list_by_feature = cards_creature_effects[target]
+            for feature in features:
+                if feature in cards_list_by_feature:
+                    cards_list = cards_list_by_feature[feature]
+                    section = 'Creature effects ('+target+')'
+                    title = 'Creature effects ('+target+', '+feature+')'
+                    cards_list_sorted = sort_cards_by_cmc_and_name(cards_list)
+                    if section not in creature_effects_output_data:
+                        creature_effects_output_data[section] = {}
+                    creature_effects_output_data[section][title] = cards_list_sorted
+                    creature_effects_stats_data[title] = len(cards_list)
+                    cards_creature_effects_selected += cards_list_sorted[:max_list_items]
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h3 id="creature-effects-cards">Creature effects cards</h3>\n'
+        html += '    <h4>Stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in creature_effects_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in creature_effects_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'creature-effects')
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, count in creature_effects_stats_data.items():
+            print(title+':', count)
+        print('')
+        for section, data in creature_effects_output_data.items():
+            print(section)
+            print('')
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print('')
+                print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 6, outformat = outformat)
+                print('')
+        print('')
+
+    return cards_creature_effects_selected
+
+def assist_best_creature_cards(cards, max_list_items = None, outformat = 'console'):
+    """Show pre-selected best cards organised by features, for the user to select some"""
+
+    print('DEBUG Analysing best creatures cards (power+toughness to CMC ratio, and more) ...',
+          file=sys.stderr)
+    best_creature_cards_selected = []
+
+    # Best creature power and toughness to cmc
+    powr_tough_to_cmc = {}
+    for card in cards:
+        faces = [card]
+        if 'card_faces' in card:
+            faces = card['card_faces']
+
+        for face in faces:
+            if ('toughness' in face and 'cmc' in face and '*' not in face['toughness']
+                    and 'power' in face and 'cmc' in face and '*' not in face['power']
+                    and 'type_line' in face and 'Vehicle' not in face['type_line']):
+                power = float(face['power'])
+                toughness = float(face['toughness'])
+                cmc = float(face['cmc']) if float(face['cmc']) > 1 else 1.0
+                ratio = round((power + toughness) / cmc, 3)
+
+                face_text = face['oracle_text'] if 'oracle_text' in face else ''
+
+                feature = 'no feature'
+                if 'keywords' in face:
+                    if 'Double strike' in face['keywords']:
+                        feature = 'Double strike'
+                    elif 'First strike' in face['keywords']:
+                        feature = 'First strike'
+                    elif 'Flying' in face['keywords']:
+                        feature = 'Flying'
+                    # TODO evasion cards (except flying)
+
+                defender = ('Defender' if bool(re.search('(^|[,.] )Defender', face_text))
+                            else 'not Defender')
+
+                malus = 'no malus'
+                if face_text:
+                    for regexp in CREATURE_MALUS_REGEXES:
+                        reg = regexp.replace('<name>', face['name'])
+                        if bool(re.search(reg, face_text)):
+                            malus = 'malus'
+                            break
+
+                if feature == 'no feature':
+                    if defender != 'Defender':
+                        if 'power' in face and float(face['power']) <= 3:
+                            feature += ', (power <= 3)'
+                        elif 'power' in face and float(face['power']) > 3:
+                            feature += ', (power > 3)'
+                    if defender == 'Defender':
+                        if 'toughness' in face and float(face['toughness']) <= 3:
+                            feature += ', (toughness <= 3)'
+                        elif 'toughness' in face and float(face['toughness']) > 3:
+                            feature += ', (toughness > 3)'
+
+                if feature not in powr_tough_to_cmc:
+                    powr_tough_to_cmc[feature] = {}
+
+                if malus not in powr_tough_to_cmc[feature]:
+                    powr_tough_to_cmc[feature][malus] = {}
+
+                if defender not in powr_tough_to_cmc[feature][malus]:
+                    powr_tough_to_cmc[feature][malus][defender] = {}
+
+                if ratio not in powr_tough_to_cmc[feature][malus][defender]:
+                    powr_tough_to_cmc[feature][malus][defender][ratio] = []
+
+                if card not in powr_tough_to_cmc[feature][malus][defender][ratio]:
+                    powr_tough_to_cmc[feature][malus][defender][ratio].append(card)
+
+    powr_tough_to_cmc_ratio2 = {}
+    features = powr_tough_to_cmc.keys()
+    for feature in features:
+        if ('no malus' in powr_tough_to_cmc[feature]
+                and 'not Defender' in powr_tough_to_cmc[feature]['no malus']):
+            for ratio, cards_list in powr_tough_to_cmc[feature]['no malus']['not Defender'].items():
+                if ratio == 2.0:
+                    for card in cards_list:
+                        faces = [card]
+                        if 'card_faces' in card:
+                            faces = card['card_faces']
+                        for face in faces:
+                            power = float(face['power'])
+                            if power == 0.0:
+                                continue
+                            keywords = len(face['keywords'])
+                            if power not in powr_tough_to_cmc_ratio2:
+                                powr_tough_to_cmc_ratio2[power] = {}
+                            if keywords not in powr_tough_to_cmc_ratio2[power]:
+                                powr_tough_to_cmc_ratio2[power][keywords] = []
+                            if card not in powr_tough_to_cmc_ratio2[power][keywords]:
+                                powr_tough_to_cmc_ratio2[power][keywords].append(card)
+
+    powers = powr_tough_to_cmc_ratio2.keys()
+    for power in powers:
+        for keywords in powr_tough_to_cmc_ratio2[power]:
+            powr_tough_to_cmc_ratio2[power][keywords] = sort_cards_by_cmc_and_name(
+                powr_tough_to_cmc_ratio2[power][keywords])
+        powr_tough_to_cmc_ratio2[power] = dict(sorted(
+            powr_tough_to_cmc_ratio2[power].items(), reverse = True))
+    powr_tough_to_cmc_ratio2 = dict(sorted(powr_tough_to_cmc_ratio2.items(), reverse = True))
+
+    for feature in features:
+        for malus in powr_tough_to_cmc[feature]:
+            for defender in powr_tough_to_cmc[feature][malus]:
+                for ratio in powr_tough_to_cmc[feature][malus][defender]:
+                    powr_tough_to_cmc[feature][malus][defender][ratio] = sort_cards_by_cmc_and_name(
+                        powr_tough_to_cmc[feature][malus][defender][ratio])
+                powr_tough_to_cmc[feature][malus][defender] = dict(sorted(
+                    powr_tough_to_cmc[feature][malus][defender].items(), reverse = True))
+            powr_tough_to_cmc[feature][malus] = dict(sorted(
+                powr_tough_to_cmc[feature][malus].items(), reverse = True))
+        powr_tough_to_cmc[feature] = dict(sorted(
+            powr_tough_to_cmc[feature].items(), reverse = True))
+    powr_tough_to_cmc = dict(sorted(powr_tough_to_cmc.items()))
+
+    # Best creature amount of (evergreen?) keywords by cmc
+    keywords_to_cmc = {}
+    for card in cards:
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if ('keywords' in face and face['keywords'] and 'cmc' in face
+                        and 'type_line' in face and 'Vehicle' not in face['type_line']):
+                    keywords = len(face['keywords'])
+                    cmc = float(face['cmc']) if float(face['cmc']) > 1 else 1.0
+                    ratio = round((keywords) / cmc, 3)
+                    if ratio not in keywords_to_cmc:
+                        keywords_to_cmc[ratio] = []
+                    keywords_to_cmc[ratio].append(card)
+        else:
+            if ('keywords' in card and card['keywords'] and 'cmc' in card
+                    and 'type_line' in card and 'Vehicle' not in card['type_line']):
+                keywords = len(card['keywords'])
+                cmc = float(card['cmc']) if float(card['cmc']) > 1 else 1.0
+                ratio = round(keywords / cmc, 3)
+                if ratio not in keywords_to_cmc:
+                    keywords_to_cmc[ratio] = []
+                keywords_to_cmc[ratio].append(card)
+    keywords_to_cmc = dict(sorted(keywords_to_cmc.items(), reverse = True))
+
+    # Best creature with first|double strike and deathtouch
+    deathtouch_strike = []
+    for card in cards:
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if ('keywords' in face and 'Deathtouch' in face['keywords']
+                        and ('Double strike' in face['keywords']
+                             or 'First strike' in face['keywords'])):
+                    deathtouch_strike.append(card)
+        else:
+            if ('keywords' in card and 'Deathtouch' in card['keywords']
+                    and ('Double strike' in card['keywords']
+                            or 'First strike' in card['keywords'])):
+                deathtouch_strike.append(card)
+
+    # Best creature with flying and deathtouch
+    deathtouch_flying = []
+    for card in cards:
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if ('keywords' in face and 'Deathtouch' in face['keywords']
+                        and 'Flying' in face['keywords']):
+                    deathtouch_flying.append(card)
+        else:
+            if ('keywords' in card and 'Deathtouch' in card['keywords']
+                    and 'Flying' in card['keywords']):
+                deathtouch_flying.append(card)
+
+    # Best creature with deathtouch
+    deathtouch = []
+    for card in cards:
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if 'keywords' in face and 'Deathtouch' in face['keywords']:
+                    deathtouch.append(card)
+        else:
+            if 'keywords' in card and 'Deathtouch' in card['keywords']:
+                deathtouch.append(card)
+
+    best_creature_cards_output_data = {}
+    for feature, cards_by_malus in powr_tough_to_cmc.items():
+        for malus, cards_by_defender in cards_by_malus.items():
+            for defender, cards_by_ratio in cards_by_defender.items():
+                if not cards_by_ratio or (
+                        feature in ['Double strike', 'First strike'] and defender == 'Defender'):
+                    continue
+                feat_text = feature.replace('no feature, ', '')+' '
+                min_ratio = 2
+                if feature in ['Double strike', 'First strike']:
+                    min_ratio = 0.5
+                title = ('Best '+feat_text+'power+toughness to CMC ratio '
+                         '('+malus+', '+defender+', ratio > '+str(min_ratio)+')')
+                best_creature_cards_output_data[title] = {'min_ratio': min_ratio,
+                                                          'ratio:cards': cards_by_ratio}
+
+    best_creature_cards_output_data |= {
+        'Best power+toughness to CMC ratio (no malus, not Defender, ratio = 2)': {
+            'strengh:cards': powr_tough_to_cmc_ratio2},
+        'Best keywords count to CMC ratio (count ratio > 1)': {
+            'min_ratio': 1,
+            'ratio:cards': keywords_to_cmc},
+        'Best Deathtouch + First strike/Double strike': {
+            'cards': deathtouch_strike},
+        'Best Deathtouch + Flying': {
+            'cards': deathtouch_flying},
+        'Best Deathtouch': {
+            'cards': deathtouch},
+    }
+
+    for data in best_creature_cards_output_data.values():
+        if 'ratio:cards' in data:
+            min_ratio = data['min_ratio'] if 'min_ratio' in data else 0
+            for ratio, cards_list in data['ratio:cards'].items():
+                if ratio <= min_ratio:
+                    break
+                best_creature_cards_selected += sort_cards_by_cmc_and_name(cards_list)[:max_list_items]
+        if 'cards' in data:
+            best_creature_cards_selected += sort_cards_by_cmc_and_name(data['cards'])[:max_list_items]
+        if 'strengh:cards' in data:
+            for power, cards_list_by_keywords in data['strengh:cards'].items():
+                for keywords, cards_list in cards_list_by_keywords.items():
+                    best_creature_cards_selected += sort_cards_by_cmc_and_name(cards_list)[:max_list_items]
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h3 id="best-creature-cards">Best creature cards</h3>\n'
+        for title, data in best_creature_cards_output_data.items():
+            html += '    <article>'+'\n'
+            html += '      <details>'+'\n'
+            html += '        <summary>'+title+'</summary>'+'\n'
+            if 'ratio:cards' in data:
+                min_ratio = data['min_ratio'] if 'min_ratio' in data else 0
+                for ratio, cards_list in data['ratio:cards'].items():
+                    if ratio <= min_ratio:
+                        break
+                    html += '      <h5 class="ratio">ratio '+str(ratio)+'</h5>'+'\n'
+                    html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                             limit=max_list_items, outformat = outformat,
+                                             return_str = True, card_feat = 'best-creature')
+            if 'cards' in data:
+                html += print_cards_list(sort_cards_by_cmc_and_name(data['cards']),
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'best-creature')
+
+            if 'strengh:cards' in data:
+                for power, cards_list_by_keywords in data['strengh:cards'].items():
+                    html += '        <details>'+'\n'
+                    html += '          <summary>power '+str(power)+'</summary>'+'\n'
+                    for keywords, cards_list in cards_list_by_keywords.items():
+                        html += '          <h6 class="keywords">keywords: '+str(keywords)+'</h6>\n'
+                        html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                                 limit=max_list_items, outformat = outformat,
+                                                 return_str = True, card_feat = 'best-creature')
+                    html += '        </details>'+'\n'
+
+            html += '      </details>'+'\n'
+            html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, data in best_creature_cards_output_data.items():
+            print(title)
+            print('')
+            if 'ratio:cards' in data:
+                min_ratio = data['min_ratio'] if 'min_ratio' in data else 0
+                for ratio, cards_list in data['ratio:cards'].items():
+                    if ratio <= min_ratio:
+                        break
+                    print('  ratio', ratio)
+                    print('')
+                    print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit=max_list_items,
+                                    indent = 6, outformat = outformat)
+                print('')
+            if 'cards' in data:
+                print_cards_list(sort_cards_by_cmc_and_name(data['cards']), limit = max_list_items,
+                                 indent = 6, outformat = outformat)
+                print('')
+            if 'strengh:cards' in data:
+                for power, cards_list_by_keywords in data['strengh:cards'].items():
+                    print('  power', power)
+                    print('')
+                    for keywords, cards_list in cards_list_by_keywords.items():
+                        print('     keywords', keywords)
+                        print('')
+                        print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                         limit=max_list_items,
+                                         indent = 9, outformat = outformat)
+                        print('')
+                print('')
+        print('')
+
+    return best_creature_cards_selected
+
+def assist_best_instant_or_sorcery_cards(cards, max_list_items = None, outformat = 'console'):
+    """Show pre-selected best instant/sorcery cards organised by features,
+       for the user to select some"""
+
+    print('DEBUG Analysing best instant/sorcery (damage to CMC ratio, and more) ...',
+          file=sys.stderr)
+    best_instant_or_sorcery_cards_selected = []
+
+    damage_to_cmc = {}
+    for card in cards:
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if ('type_line' in face and face['type_line'] in ['Instant', 'Sorcery']
+                        and 'oracle_text' in face and 'cmc' in face):
+                    damage = None
+                    matches = re.search('deals ([0-9x]+) damage', face['oracle_text'].lower())
+                    if matches and matches.group(1) != 'x':
+                        damage = float(matches.group(1))
+                    if not damage:
+                        continue
+                    cmc = float(face['cmc']) if float(face['cmc']) > 1 else 1.0
+                    ratio = round(damage / cmc, 3)
+                    if ratio not in damage_to_cmc:
+                        damage_to_cmc[ratio] = []
+                    damage_to_cmc[ratio].append(card)
+        else:
+            if ('type_line' in card and card['type_line'] in ['Instant', 'Sorcery']
+                    and 'oracle_text' in card and 'cmc' in card):
+                damage = None
+                matches = re.search('deals ([0-9x]+) damage', card['oracle_text'].lower())
+                if matches and matches.group(1) != 'x':
+                    damage = float(matches.group(1))
+                if not damage:
+                    continue
+                cmc = float(card['cmc']) if float(card['cmc']) > 1 else 1.0
+                ratio = round(damage / cmc, 3)
+                if ratio not in damage_to_cmc:
+                    damage_to_cmc[ratio] = []
+                damage_to_cmc[ratio].append(card)
+    damage_to_cmc = dict(sorted(damage_to_cmc.items(), reverse = True))
+
+    best_instant_or_sorcery_cards_output_data = {
+        'Best damage to CMC ratio': {
+            'min_ratio': 1.01,
+            'ratio:cards': damage_to_cmc},
+    }
+
+    for data in best_instant_or_sorcery_cards_output_data.values():
+        if 'ratio:cards' in data:
+            min_ratio = data['min_ratio'] if 'min_ratio' in data else 0
+            for ratio, cards_list in data['ratio:cards'].items():
+                if ratio <= min_ratio:
+                    break
+                best_instant_or_sorcery_cards_selected += (
+                    sort_cards_by_cmc_and_name(cards_list)[:max_list_items])
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h3 id="best-instant-sorcery-cards">Best instant/sorcery cards</h3>\n'
+        for title, data in best_instant_or_sorcery_cards_output_data.items():
+            html += '    <article>'+'\n'
+            html += '      <details>'+'\n'
+            html += '        <summary>'+title+'</summary>'+'\n'
+            if 'ratio:cards' in data:
+                min_ratio = data['min_ratio'] if 'min_ratio' in data else 0
+                for ratio, cards_list in data['ratio:cards'].items():
+                    if ratio <= min_ratio:
+                        break
+                    html += '      <h5 class="ratio">ratio '+str(ratio)+'</h5>'+'\n'
+                    html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                             limit=max_list_items, outformat = outformat,
+                                             return_str = True, card_feat = 'best-instant-sorcery')
+            html += '      </details>'+'\n'
+            html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, data in best_instant_or_sorcery_cards_output_data.items():
+            print(title)
+            print('')
+            if 'ratio:cards' in data:
+                min_ratio = data['min_ratio'] if 'min_ratio' in data else 0
+                for ratio, cards_list in data['ratio:cards'].items():
+                    if ratio <= min_ratio:
+                        break
+                    print('  ratio', ratio)
+                    print('')
+                    print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit=max_list_items,
+                                    indent = 6, outformat = outformat)
+                print('')
+        print('')
+
+    return best_instant_or_sorcery_cards_selected
 
 def print_combo_card_names(combo):
     """Print card's names of a combo"""
@@ -3401,8 +4171,8 @@ def print_tup_combo(tup_combo, cards, indent = 0, print_header = False, max_card
             img_element = '<img src="#" data-imgurl="'+imgurl+'" alt="image of card '+name+'" />'
             if not imgurl:
                 img_element = '<span class="card-not-found">/<span>'
-            cardclass = get_card_cssclass(card)
-            name_and_link = ('<a class="'+get_card_colored(card)+'" href="#" onmouseover="loadimg(this);">'
+            cardclass = get_card_css_class(card)
+            name_and_link = ('<a class="'+get_card_colored(card)+'" href="#" onmouseover="loadImg(this);">'
                                 +'<span class="name">'+name+'</span>'
                                 +'<span class="image">'+img_element+'</span>'
                              +'</a>')
@@ -3751,7 +4521,7 @@ def assist_k_core_combos(combos, cards, regex, num_cards, excludes, max_cards = 
         for node in k_nodes:
             card_name = nx_graph.nodes[node]['card']
             html += print_card(get_card(card_name, cards, strict = True), outformat = outformat,
-                               return_str = True)
+                               return_str = True, card_feat = 'combos-k-core')
         html += '        </table>'+'\n'
         html += '      </details>'+'\n'
         html += '      <details>'+'\n'
@@ -3818,10 +4588,13 @@ def print_cards_list(cards, limit = None, indent = 0, outformat = 'console', ret
 
         if has_reach_limit:
             if outformat == 'html':
-                ret += '      <p class="truncated-symbol">...</p>'+'\n'
+                ret += '      <p class="truncated-symbol">... '
+                ret += '<small class="limit">(<em>--max-list-items</em> set to '+str(limit)+')'
+                ret += '</small></p>'+'\n'
 
             if outformat == 'console':
-                ret += ('{:>'+str(indent)+'}...').format('')+'\n'
+                ret += ('{:>'+str(indent)+'}... {}').format(
+                        '', '(--max-list-items set to '+str(limit)+')')+'\n'
 
     if not return_str:
         print(ret)
@@ -3829,10 +4602,9 @@ def print_cards_list(cards, limit = None, indent = 0, outformat = 'console', ret
     return ret
 
 def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michael Bideau',
-                        page_title = 'MTG Deck Builder Assistant <small>| made by Michael Bideau</small>'):
+                        page_title = 'MTG Deck Builder Assistant '
+                        '<small>| made by Michael Bideau</small>', cards_preselected = None):
     """Print an HTML header with title specified, and CSS and JS"""
-
-    # TODO add a visual flag (underline or background color) that shows cards already in the deck
 
     html = ''
     html += '<!DOCTYPE html>'+'\n'
@@ -3978,6 +4750,8 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '    button.show { background-color: lightgreen; }'+'\n'
     html += '    button.download { background-color: lightblue; }'+'\n'
     html += '    #deck-list { margin: 10px 0 0 10px; height: 320px; overflow: auto; }'+'\n'
+    html += '    h1 small, h2 small, h3 small, h4 small { font-weight: normal; }'+'\n'
+    html += '    #cards-not-suggested h4 a { color: inherit; }'+'\n'
     html += '    .red, a.red { color: red; }'+'\n'
     html += '    .blue, a.blue { color: blue; }'+'\n'
     html += '    .gray, a.gray { color: gray; }'+'\n'
@@ -4019,53 +4793,73 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '      button.show { background-color: #31f231; }'+'\n'
     html += '      button.download { background-color: #51d1fb; }'+'\n'
     html += '    }'+'\n'
+    html += '    .hidden { display: none; }'+'\n'
     html += '  </style>'+'\n'
     html += '  <script>'+'\n'
-    html += '    var deck_list = [];'+'\n'
-    html += '    function get_card_cssclass(name) {'+'\n'
+    html += '    var deckList = [];'+'\n'
+    if cards_preselected:
+        html += '    var inputDeckList = ['+'\n'
+        cards_preselected_len = len(cards_preselected)
+        for index, card in enumerate(cards_preselected):
+            html += '      "'+card['name'].replace('"', "'")+'"'
+            html += (',' if index != cards_preselected_len else '')+'\n'
+        html += '    ];'+'\n'
+    html += '    function getCardCssClass(name) {'+'\n'
     html += '      return name.toLowerCase().replaceAll(/ /g, "-").replaceAll(/[^a-z0-9_-]/g, "");'+'\n'
     html += '    };'+'\n'
-    html += '    function update_deck_list(checkboxElement, cardType) {'+'\n'
-    html += '      let card_name = checkboxElement.value;'+'\n'
-    html += '      let in_deck_list = deck_list.indexOf(card_name);'+'\n'
-    html += '      var elementCount = document.getElementById(cardType+"-count");'+'\n'
-    html += '      var cssclass = get_card_cssclass(card_name);'+'\n'
+    html += '    function updateDeckList(checkboxElement) {'+'\n'
+    html += '      var featCountElement = null;'+'\n'
+    html += '      if ("cardfeat" in checkboxElement.dataset) {'+'\n'
+    html += '        let cardFeat = checkboxElement.dataset.cardfeat;'+'\n'
+    html += '        featCountElement = document.getElementById(cardFeat+"-count");'+'\n'
+    html += '      };'+'\n'
+    html += '      let cardType = checkboxElement.dataset.cardtype;'+'\n'
+    html += '      var typeCountElement = document.getElementById(cardType+"-count");'+'\n'
+    html += '      let cardName = checkboxElement.value;'+'\n'
+    html += '      let inDeckList = deckList.indexOf(cardName);'+'\n'
+    html += '      var cssclass = getCardCssClass(cardName);'+'\n'
     html += '      var cardElements = document.querySelectorAll("."+cssclass);'+'\n'
-    html += '      if(checkboxElement.checked && in_deck_list < 0) {'+'\n'
-    html += '        deck_list.push(card_name);'+'\n'
-    html += '        elementCount.innerHTML = Number(elementCount.innerHTML) + 1;'+'\n'
+    html += '      if(checkboxElement.checked && inDeckList < 0) {'+'\n'
+    html += '        deckList.push(cardName);'+'\n'
+    html += '        typeCountElement.innerHTML = Number(typeCountElement.innerHTML) + 1;'+'\n'
+    html += '        if (featCountElement) {'+'\n'
+    html += '          featCountElement.innerHTML = Number(featCountElement.innerHTML) + 1;'+'\n'
+    html += '        }'+'\n'
     html += '        cardElements.forEach(function (item) { item.classList.add("selected") });'+'\n'
     html += '      }'+'\n'
-    html += '      else if(! checkboxElement.checked && in_deck_list > -1) {'+'\n'
-    html += '        deck_list.splice(in_deck_list, 1);'+'\n'
-    html += '        elementCount.innerHTML = Number(elementCount.innerHTML) - 1;'+'\n'
+    html += '      else if(! checkboxElement.checked && inDeckList > -1) {'+'\n'
+    html += '        deckList.splice(inDeckList, 1);'+'\n'
+    html += '        typeCountElement.innerHTML = Number(typeCountElement.innerHTML) - 1;'+'\n'
+    html += '        if (featCountElement) {'+'\n'
+    html += '          featCountElement.innerHTML = Number(featCountElement.innerHTML) - 1;'+'\n'
+    html += '        }'+'\n'
     html += '        cardElements.forEach(function (item) { item.classList.remove("selected") });'+'\n'
     html += '      };'+'\n'
     html += '      var deck_size_elt = document.getElementById("deck-size");'+'\n'
-    html += '      deck_size_elt.innerHTML = " ("+deck_list.length+" cards)";'+'\n'
+    html += '      deck_size_elt.innerHTML = " ("+deckList.length+" cards)";'+'\n'
     html += '    };'+'\n'
-    html += '    function get_commander_name(clean = false) {'+'\n'
+    html += '    function getCommanderName(clean = false) {'+'\n'
     html += '      var nameElt = document.getElementById("commander-name");'+'\n'
     html += '      if (clean) { return nameElt.innerHTML.replaceAll(/\\W/g, ""); }'+'\n'
     html += '      return nameElt.innerHTML;'+'\n'
     html += '    };'+'\n'
-    html += '    function generate_deck_list() {'+'\n'
-    html += '      var dek_list = "";'+'\n'
-    html += '      if (deck_list.length > 0) {'+'\n'
-    html += '        dek_list = "1 "+deck_list.join("\\n1 ")+"\\n\\n";'+'\n'
+    html += '    function generateDeckList() {'+'\n'
+    html += '      var dekList = "";'+'\n'
+    html += '      if (deckList.length > 0) {'+'\n'
+    html += '        dekList = "1 "+deckList.join("\\n1 ")+"\\n\\n";'+'\n'
     html += '      }'+'\n'
-    html += '      dek_list += "1 "+get_commander_name();'+'\n'
-    html += '      return dek_list;'+'\n'
+    html += '      dekList += "1 "+getCommanderName();'+'\n'
+    html += '      return dekList;'+'\n'
     html += '    };'+'\n'
-    html += '    function show_deck_list() {'+'\n'
+    html += '    function showDeckList() {'+'\n'
     html += '      var div = document.getElementById("deck-list");'+'\n'
-    html += '      div.innerHTML = "<p>"+generate_deck_list().replaceAll("\\n", "<br/>")+"</p>";\n'
+    html += '      div.innerHTML = "<p>"+generateDeckList().replaceAll("\\n", "<br/>")+"</p>";\n'
     html += '    };'+'\n'
-    html += '    function download_deck_list() {'+'\n'
+    html += '    function downloadDeckList() {'+'\n'
     html += '      var mime_type = "text/plain";'+'\n'
-    html += '      var blob = new Blob([generate_deck_list()], {type: mime_type});'+'\n'
+    html += '      var blob = new Blob([generateDeckList()], {type: mime_type});'+'\n'
     html += '      var dlink = document.createElement("a");'+'\n'
-    html += '      dlink.download = get_commander_name(true)+".dek";'+'\n'
+    html += '      dlink.download = getCommanderName(true)+".dek";'+'\n'
     html += '      dlink.href = window.URL.createObjectURL(blob);'+'\n'
     html += '      dlink.onclick = function(e) {'+'\n'
     html += '        // revokeObjectURL needs a delay to work properly'+'\n'
@@ -4077,28 +4871,49 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '      dlink.click();'+'\n'
     html += '      dlink.remove();'+'\n'
     html += '    };'+'\n'
-    html += '    function loadimg(element) {'+'\n'
+    html += '    function loadImg(element) {'+'\n'
     html += '      imgelt = element.querySelector("img[src='+"'#'"+']");'+'\n'
     html += '      if (imgelt && "imgurl" in imgelt.dataset) {'+'\n'
     html += '        imgelt.setAttribute("src", imgelt.dataset.imgurl);'+'\n'
     html += '      }'+'\n'
     html += '    };'+'\n'
-    html += '    function uncheck_all() {'+'\n'
+    html += '    function uncheckAll() {'+'\n'
     html += '      var checkedBoxes = document.querySelectorAll("input[name=cards]:checked");'+'\n'
     html += '      for (i = 0; i < checkedBoxes.length; i++) { checkedBoxes[i].checked = false; }'+'\n'
     html += '    };'
-    html += '    function select_commander() {'+'\n'
-    html += '      var commanderName = get_commander_name();'+'\n'
-    html += '      console.log("commander name:", commanderName);'+'\n'
-    html += '      var cssclass = get_card_cssclass(commanderName);'+'\n'
-    html += '      console.log("CSS class:", cssclass);'+'\n'
+    html += '    function selectCommander() {'+'\n'
+    html += '      var commanderName = getCommanderName();'+'\n'
+    html += '      var cssclass = getCardCssClass(commanderName);'+'\n'
     html += '      var cardElements = document.querySelectorAll("."+cssclass);'+'\n'
-    html += '      console.log("elements:", cardElements);'+'\n'
     html += '      cardElements.forEach(function (item) { item.classList.add("selected") });'+'\n'
     html += '    };'+'\n'
+    if cards_preselected:
+        html += '    function preselectCards() {'+'\n'
+        html += '      for (i = 0; i < inputDeckList.length; i++) {'+'\n'
+        html += '        var cardName = inputDeckList[i];'+'\n'
+        html += '        var cssclass = getCardCssClass(cardName);'+'\n'
+        html += '        var checkboxElement = document.querySelector("."+cssclass+" input");'+'\n'
+        html += '        if (checkboxElement) {'+'\n'
+        html += '          checkboxElement.checked = true;'+'\n'
+        html += '          updateDeckList(checkboxElement);'+'\n'
+        html += '        }'+'\n'
+        html += '      };'+'\n'
+        html += '    };'+'\n'
+        html += '    function moveUpNotSuggestedDiv() {'+'\n'
+        html += '      var notSuggestedDiv = document.getElementById("cards-not-suggested");'+'\n'
+        html += '      if (notSuggestedDiv) {'+'\n'
+        html += '        var inputDeckInfoSection = document.getElementById("input-deck-info");'+'\n'
+        html += '        if (inputDeckInfoSection) {'+'\n'
+        html += '          inputDeckInfoSection.appendChild(notSuggestedDiv);'+'\n'
+        html += '        };'+'\n'
+        html += '      };'+'\n'
+        html += '    };'+'\n'
     html += '    function init() {'+'\n'
-    html += '      uncheck_all();'+'\n'
-    html += '      select_commander();'+'\n'
+    html += '      uncheckAll();'+'\n'
+    html += '      selectCommander();'+'\n'
+    if cards_preselected:
+        html += '      preselectCards();'+'\n'
+        html += '      moveUpNotSuggestedDiv();'+'\n'
     html += '    };'+'\n'
     html += '  </script>'+'\n'
     html += '</head>'+'\n'
@@ -4110,9 +4925,9 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += 'Get the <a href="'+SOURCE_URL+'">source code on Github</a>'
     html += '</p>'+'\n'
     html += '    </header>'+'\n'
-    html += get_html_toc(cssclass = 'main-nav')
+    html += get_html_toc(cssclass = 'main-nav', show_deck_info = bool(cards_preselected))
     html += '    <aside class="side">'+'\n'
-    html += get_html_toc(cssclass = 'side-nav')
+    html += get_html_toc(cssclass = 'side-nav', show_deck_info = bool(cards_preselected))
     html += '      <h2>Deck<span id="deck-size"></span></h2>'+'\n'
     html += '      <dl>'+'\n'
     html += '        <dt>Lands</dt>'+'\n'
@@ -4129,14 +4944,48 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '        <dd id="instant-count">0</dd>'+'\n'
     html += '        <dt>Sorceries</dt>'+'\n'
     html += '        <dd id="sorcery-count">0</dd>'+'\n'
-    html += '        <dt>Stickers</dt>'+'\n'
-    html += '        <dd id="stickers-count">0</dd>'+'\n'
     html += '        <dt>Unkown</dt>'+'\n'
     html += '        <dd id="unknown-count">0</dd>'+'\n'
     html += '      </dl>'+'\n'
-    html += '      <button class="action show" onclick="show_deck_list()">'
+    html += '      <dl>'+'\n'
+    html += '        <dt>Commander combos</dt>'+'\n'
+    html += '        <dd id="commander-combos-count">0</dd>'+'\n'
+    html += '        <dt>Combos k-core</dt>'+'\n'
+    html += '        <dd id="combos-k-core-count">0</dd>'+'\n'
+    html += "        <dt>With commander's feature</dt>"+'\n'
+    html += '        <dd id="common-feat-count">0</dd>'+'\n'
+    html += '        <dt>Land fetchers</dt>'+'\n'
+    html += '        <dd id="land-fetchers-count">0</dd>'+'\n'
+    html += '        <dt>Ramps</dt>'+'\n'
+    html += '        <dd id="ramps-count">0</dd>'+'\n'
+    html += '        <dt>No pay</dt>'+'\n'
+    html += '        <dd id="no-pay-count">0</dd>'+'\n'
+    html += '        <dt>Draws</dt>'+'\n'
+    html += '        <dd id="draws-count">0</dd>'+'\n'
+    html += '        <dt>Tutors</dt>'+'\n'
+    html += '        <dd id="tutors-count">0</dd>'+'\n'
+    html += '        <dt>Removal</dt>'+'\n'
+    html += '        <dd id="removal-count">0</dd>'+'\n'
+    html += '        <dt>Disabling</dt>'+'\n'
+    html += '        <dd id="disabling-count">0</dd>'+'\n'
+    html += '        <dt>Board wipe</dt>'+'\n'
+    html += '        <dd id="wipe-count">0</dd>'+'\n'
+    html += '        <dt>Graveyard recursion</dt>'+'\n'
+    html += '        <dd id="graveyard-recursion-count">0</dd>'+'\n'
+    html += '        <dt>Graveyard hate</dt>'+'\n'
+    html += '        <dd id="graveyard-hate-count">0</dd>'+'\n'
+    html += '        <dt>Copy</dt>'+'\n'
+    html += '        <dd id="copy-count">0</dd>'+'\n'
+    html += '        <dt>Best creatures</dt>'+'\n'
+    html += '        <dd id="best-creature-count">0</dd>'+'\n'
+    html += '        <dt>Creatures effects</dt>'+'\n'
+    html += '        <dd id="creature-effects-count">0</dd>'+'\n'
+    html += '        <dt>Best instant/sorcery</dt>'+'\n'
+    html += '        <dd id="best-instant-sorcery-count">0</dd>'+'\n'
+    html += '      </dl>'+'\n'
+    html += '      <button class="action show" onclick="showDeckList()">'
     html += 'Show <small>/update</small> deck list</button>'+'\n'
-    html += '      <button class="action download" onclick="download_deck_list()">'
+    html += '      <button class="action download" onclick="downloadDeckList()">'
     html += 'Download deck list</button>'+'\n'
     html += '      <div id="deck-list"></div>'+'\n'
     html += '    </aside>'+'\n'
@@ -4236,18 +5085,22 @@ def display_commander_card(card, commander_combos_regex, outformat = 'console', 
         print('     Text:', card['oracle_text'])
         print('Combo exp:', commander_combos_regex)
 
-def get_html_toc(cssclass = ''):
+def get_html_toc(cssclass = '', show_deck_info = False):
     """Return the HTML Table Of Content"""
     html = '  <nav class="toc'+((' '+cssclass) if cssclass else '')+'">'+'\n'
     html += '    <ol>'+'\n'
+    if show_deck_info:
+        html += '      <li><a href="#input-deck-info">Input deck info</a></li>'+'\n'
     html += '      <li><a href="#stats-all-cards">Stats all cards</a></li>'+'\n'
     html += '      <li><a href="#commander-card">Commander card</a></li>'+'\n'
     html += '      <li><a href="#commander-combos">Commander combos</a></li>'+'\n'
-    html += '      <li><a href="#combos-k-core">Combos k-core</a></li>'+'\n'
+    if USE_NX:
+        html += '      <li><a href="#combos-k-core">Combos k-core</a></li>'+'\n'
     html += '      <li><a href="#with-commanders-keyword">'+"With commander's keyword</a></li>"+'\n'
     html += '      <li><a href="#lands">Lands</a></li>'+'\n'
     html += '      <li><a href="#land-fetchers">Land fetchers</a></li>'+'\n'
     html += '      <li><a href="#ramp-cards">Ramp cards</a></li>'+'\n'
+    html += '      <li><a href="#no-pay-cards">No pay cards</a></li>'+'\n'
     html += '      <li><a href="#draw-cards">Draw cards</a></li>'+'\n'
     html += '      <li><a href="#tutor-cards">Tutor cards</a></li>'+'\n'
     html += '      <li><a href="#removal-cards">Removal cards</a></li>'+'\n'
@@ -4256,18 +5109,20 @@ def get_html_toc(cssclass = ''):
     html += '      <li><a href="#graveyard-recursion-cards">Graveyard recursion cards</a></li>\n'
     html += '      <li><a href="#graveyard-hate-cards">Graveyard hate cards</a></li>'+'\n'
     html += '      <li><a href="#copy-cards">Copy cards</a></li>'+'\n'
-    html += '      <li><a href="#best-cards">Best cards</a></li>'+'\n'
+    html += '      <li><a href="#best-creature-cards">Best creature cards</a></li>'+'\n'
+    html += '      <li><a href="#creature-effects-cards">Creature effects cards</a></li>\n'
+    html += '      <li><a href="#best-instant-sorcery-cards">Best instant/sorcery cards</a></li>\n'
     html += '    </ol>'+'\n'
     html += '  </nav>'+'\n'
     return html
 
-def display_deck_building_header(outformat = 'console'):
+def display_deck_building_header(outformat = 'console', show_deck_info = False):
     """Display the deck building header"""
 
     # html
     if outformat == 'html':
         html = '  <h2>Deck building</h2>'+'\n'
-        html += get_html_toc(cssclass = 'content-nav')
+        html += get_html_toc(cssclass = 'content-nav', show_deck_info = show_deck_info)
         print(html)
 
     # console
@@ -4462,12 +5317,14 @@ def assist_commander_combos(commander_combos_no_filter, commander_combos, comman
                 html += '      <table class="combos-list">'+'\n'
                 for index, tup_combo in enumerate(c_combos_rank_1_x_cards[key]['combos'].items()):
                     html += print_tup_combo(tup_combo, cards, max_cards = count,
-                                            print_header = index == 0, outformat = outformat, return_str = True)
+                                            print_header = index == 0, outformat = outformat,
+                                            return_str = True)
                 html += '      </table>'+'\n'
                 html += '      <h5>Cards</h5>'+'\n'
                 html += '      <table class="cards-list">'+'\n'
                 for name in sorted(c_combos_rank_1_x_cards[key]['cards names']):
-                    html += print_card(get_card(name, cards), outformat = outformat, return_str = True)
+                    html += print_card(get_card(name, cards), outformat = outformat,
+                                       return_str = True, card_feat = 'commander-combos')
                 html += '      </table>'+'\n'
                 html += '    </details>'+'\n'
 
@@ -4488,12 +5345,14 @@ def assist_commander_combos(commander_combos_no_filter, commander_combos, comman
                 html += '      <table class="combos-list">'+'\n'
                 for index, tup_combo in enumerate(c_combos_rank_2_x_cards[key]['combos'].items()):
                     html += print_tup_combo(tup_combo, cards, max_cards = count,
-                                            print_header = index == 0, outformat = outformat, return_str = True)
+                                            print_header = index == 0, outformat = outformat,
+                                            return_str = True)
                 html += '      </table>'+'\n'
                 html += '      <h5>Cards</h5>'+'\n'
                 html += '      <table class="cards-list">'+'\n'
                 for name in sorted(c_combos_rank_2_x_cards[key]['cards names']):
-                    html += print_card(get_card(name, cards), outformat = outformat, return_str = True)
+                    html += print_card(get_card(name, cards), outformat = outformat,
+                                       return_str = True, card_feat = 'commander-combos')
                 html += '      </table>'+'\n'
                 html += '    </details>'+'\n'
 
@@ -4517,7 +5376,8 @@ def assist_commander_combos(commander_combos_no_filter, commander_combos, comman
                     if complete != combos_completed:
                         combos_completed = complete
                         html += '        <tr class="combo-completed"><td colspan="7">Complete '+str(complete)+' combos</td></tr>'+'\n'
-                    html += print_card(get_card(name, cards), outformat = outformat, return_str = True)
+                    html += print_card(get_card(name, cards), outformat = outformat,
+                                       return_str = True, card_feat = 'commander-combos')
                 html += '      </table>'+'\n'
                 html += '    </details>'+'\n'
 
@@ -4600,37 +5460,101 @@ def assist_commander_keywords_common(commander_card, cards, limit = None, outfor
         commander_common_feature = {}
         commander_texts = get_oracle_texts(commander_card)
         commander_texts_low = list(map(str.lower, commander_texts))
-        for feature, condition in COMMANDER_FEATURES_REGEXES.items():
-            for have_regexp, search_regexp in condition.items():
+        for feature, have_and_search in COMMANDER_FEATURES_REGEXES.items():
+            for have_regexp, search_regexp in have_and_search.items():
                 if list(search_strings(have_regexp, commander_texts_low)):
                     if feature not in commander_common_feature:
                         commander_common_feature[feature] = []
+                    if not search_regexp:
+                        continue
                     for card in cards:
-                        oracle_texts = get_oracle_texts(card)
+                        oracle_texts = get_oracle_texts(card, replace_name = '<name>')
                         oracle_texts_low = list(map(str.lower, oracle_texts))
                         for regexp in search_regexp:
+                            exclude_regexes = []
+                            if isinstance(regexp, tuple):
+                                exclude_regexes = regexp[1]
+                                regexp = regexp[0]
                             if list(search_strings(regexp, oracle_texts_low)):
-                                commander_common_feature[feature].append(card)
+                                wont_add = False
+                                if exclude_regexes:
+                                    for exc_reg in exclude_regexes:
+                                        if list(search_strings(exc_reg, oracle_texts_low)):
+                                            wont_add = True
+                                            break
+                                if not wont_add:
+                                    commander_common_feature[feature].append(card)
                                 break
+
         for feature, cards_list in commander_common_feature.items():
             commander_common_feature_organized[feature] = organize_by_type(cards_list)
 
         if FEATURE_MAP:
+
+            features_and_keywords_to_search = []
+            features_and_keywords_to_search += list(map(
+                lambda f: 'feat:'+f, commander_common_feature.keys()))
+            features_and_keywords_to_search += list(map(
+                lambda k: 'keyword:'+k, commander_keywords))
             associated_feature = {}
-            for feature in commander_common_feature:
-                if feature in FEATURE_MAP:
-                    for feat in FEATURE_MAP[feature]:
-                        if feat in COMMANDER_FEATURES_REGEXES:
-                            for search_regexp in COMMANDER_FEATURES_REGEXES[feat].values():
+
+            # descend/loop once (depth 2)
+            features_or_keywords_depth_2 = []
+            for have in features_and_keywords_to_search:
+                if have in FEATURE_MAP:
+                    for feat_or_keyw in FEATURE_MAP[have]:
+                        if feat_or_keyw in FEATURE_MAP:
+                            features_or_keywords_depth_2.append(feat_or_keyw)
+
+            if features_or_keywords_depth_2:
+                for feat_or_keyw in features_or_keywords_depth_2:
+                    if feat_or_keyw not in features_and_keywords_to_search:
+                        features_and_keywords_to_search.append(feat_or_keyw)
+
+            for have in features_and_keywords_to_search:
+                if have in FEATURE_MAP:
+                    for search in FEATURE_MAP[have]:
+                        feature = None
+                        keyword = None
+                        if search.startswith('feat:'):
+                            feature = search.replace('feat:', '')
+                        elif search.startswith('keyword:'):
+                            keyword = search.replace('keyword:', '')
+                        if feature and feature in COMMANDER_FEATURES_REGEXES:
+                            for search_regexp in COMMANDER_FEATURES_REGEXES[feature].values():
+                                if not search_regexp:
+                                    continue
                                 for card in cards:
-                                    oracle_texts = get_oracle_texts(card)
+                                    oracle_texts = get_oracle_texts(card, replace_name = '<name>')
                                     oracle_texts_low = list(map(str.lower, oracle_texts))
                                     for regexp in search_regexp:
+                                        exclude_regexes = []
+                                        if isinstance(regexp, tuple):
+                                            exclude_regexes = regexp[1]
+                                            regexp = regexp[0]
                                         if list(search_strings(regexp, oracle_texts_low)):
-                                            if feat not in associated_feature:
-                                                associated_feature[feat] = []
-                                            associated_feature[feat].append(card)
-                                            break
+                                            wont_add = False
+                                            if exclude_regexes:
+                                                for exc_reg in exclude_regexes:
+                                                    if list(search_strings(exc_reg,
+                                                                           oracle_texts_low)):
+                                                        wont_add = True
+                                                        break
+                                            if not wont_add:
+                                                if feature not in associated_feature:
+                                                    associated_feature[feature] = []
+                                                associated_feature[feature].append(card)
+                                                break
+                        elif keyword:
+                            for card in cards:
+                                keywords_list = get_keywords(card)
+                                for keywords in keywords_list:
+                                    if keyword in keywords:
+                                        if keyword not in associated_feature:
+                                            associated_feature[keyword] = []
+                                        associated_feature[keyword].append(card)
+                                        break
+
         for feature, cards_list in associated_feature.items():
             associated_feature_organized[feature] = organize_by_type(cards_list)
 
@@ -4652,7 +5576,8 @@ def assist_commander_keywords_common(commander_card, cards, limit = None, outfor
         html += (('('+','.join(commander_keywords)+')') if commander_keywords else '')+': '
         html += str(len(cards_common_keyword))+'</summary>'+'\n'
         html += print_cards_list(cards_common_keyword, limit = limit,
-                                 outformat = outformat, return_str = True)
+                                 outformat = outformat, return_str = True,
+                                 card_feat = 'common-feat')
         html += '      </details>'+'\n'
         html += '    </article>'+'\n'
 
@@ -4675,7 +5600,7 @@ def assist_commander_keywords_common(commander_card, cards, limit = None, outfor
                             html += '          <table class="cards-list">'+'\n'
                             html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
                                                      limit = limit, outformat = outformat,
-                                                     return_str = True)
+                                                     return_str = True, card_feat = 'common-feat')
                             html += '          </table>'+'\n'
                             html += '        </details>'+'\n'
                     html += '      </details>'+'\n'
@@ -4709,6 +5634,55 @@ def assist_commander_keywords_common(commander_card, cards, limit = None, outfor
             print('')
 
     return cards_common_keywords_selected
+
+def print_input_deck_info(cards, cards_names_not_found, cards_not_playable, outformat = 'console'):
+    """Print the input deck informations (cards not found, not playable, etc)"""
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section id="input-deck-info">'+'\n'
+        html += '    <h3>Input deck info</h3>'+'\n'
+        html += '    <div class="ok">'+'\n'
+        html += '      <h4>Cards ok: '+str(len(cards))+' '
+        html += '<small>(basic lands excluded)</small></h4>\n'
+        html += '    </div>'+'\n'
+
+        if cards_names_not_found:
+            html += '    <div class="not-found">'+'\n'
+            html += '      <h4>Cards not found</h4>'+'\n'
+            html += '      <ul class="cards-names-list">'+'\n'
+            for card_name in cards_names_not_found:
+                html += '        <li>'+card_name+'</li>'+'\n'
+            html += '      </ul>'+'\n'
+            html += '    </div>'+'\n'
+        if cards_not_playable:
+            html += '    <div class="not-playable">'+'\n'
+            html += '      <h4>Cards not playable '
+            html += '<small>(not rules 0 compatible, or wrong color)</small></h4>\n'
+            html += print_cards_list(cards_not_playable, outformat = outformat, return_str = True,
+                                     print_rarity = True)
+            html += '    </div>'+'\n'
+
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        print('')
+        print('Input deck info')
+        print('')
+        if cards_names_not_found:
+            print('   Cards not found')
+            print('')
+            for card_name in cards_names_not_found:
+                print('     ', card_name)
+            print('')
+        if cards_not_playable:
+            print('   Cards not playable (not rules 0 compatible, or wrong color)')
+            print('')
+            print_cards_list(cards_not_playable, outformat = outformat, indent = 6)
+            print('')
+        print('')
+        print('   Cards ok:', len(cards), ' (basic lands excluded)')
 
 def compare_with_hand_crafted_list(selection, list_file, title, cards):
     """Compares the selection against a hand crafted list of cards"""
@@ -4747,6 +5721,50 @@ def compare_with_hand_crafted_list(selection, list_file, title, cards):
     print('')
     # print(title+' (bad misses)')
     # print_cards_list(sort_cards_by_cmc_and_name(bad_misses))
+
+def get_input_deck_cards(deck_file):
+    """Return a list of cards names matching the lines in the specified deck file"""
+
+    deck_cards_names = []
+    deck_path = Path(deck_file)
+    if not deck_path.is_file():
+        print("Error: deck file '"+deck_file+"' not found", file=sys.stderr)
+        sys.exit(1)
+    with open(deck_file, 'r', encoding='utf-8') as f_read:
+        for line in f_read:
+            line = line.strip()
+            if not line:
+                continue
+            # dck (Xmage format): sidebord and layout
+            if (line.startswith('SB:') or line.startswith('LAYOUT MAIN:')
+                    or line.startswith('LAYOUT SIDEBOARD:')):
+                continue
+            # dck_info: name and sidebord
+            if line.startswith('NAME:') or line.startswith('SB:'):
+                continue
+            # dck (Xmage format)
+            matches = re.match(r'^\s*\d+\s+\[[^]]+\]\s+([^)]+)\s*$', line)
+            if not matches:
+                # dck_info
+                matches = re.match(r'^\s*\d+\s+\[[^]]+\]\s+([^;]+)\s*;;.*$', line)
+                if not matches:
+                    # mtga
+                    matches = re.match(r'^\s*\d+\s+([^(]+)\s*\(.*$', line)
+                    if not matches:
+                        # dek
+                        matches = re.match(r'^\s*\d+\s+(.+)$', line)
+            if not matches:
+                print("WARNING deck file contain a line that doesn't match any of the expected"
+                    " formats (.dck, .dck_info, .mtga, .dek)",
+                    file=sys.stderr)
+                print("invalid line:", line, file=sys.stderr)
+                continue
+            card_name = matches.group(1).strip()
+            if (card_name not in BASIC_LAND_NAMES and card_name != COMMANDER_NAME
+                    and card_name not in deck_cards_names):
+                deck_cards_names.append(card_name)
+
+    return deck_cards_names
 
 def main():
     """Main program"""
@@ -4845,6 +5863,10 @@ def main():
             print(f'   {count:>6}  {effect}')
         sys.exit(0)
 
+    input_deck_cards_names = []
+    if args.input_deck_file:
+        input_deck_cards_names = get_input_deck_cards(args.input_deck_file)
+
     XMAGE_COMMANDER_CARDS_BANNED = get_xmage_commander_banned_list()
 
     # get scryfall cards database
@@ -4856,16 +5878,6 @@ def main():
 
     # output format
     outformat = 'html' if args.html else 'console'
-
-    # HTML specifics
-    if args.html:
-        def colored(text, color, *pos, **kwargs):  # pylint: disable=unused-variable,unused-argument,redefined-outer-name
-            """Return the text colored"""
-            return '<span class="'+color+'">'+text+'</span>'
-
-        display_html_header()
-
-    print_all_cards_stats(cards, outformat = outformat)
 
     # for name in ['War of the Last Alliance', 'Wall of Shards', 'Vexing Sphinx', 'Mistwalker',
     #              'Pixie Guide', 'Library of Lat-Nam', 'Time Beetle', "Mastermind's Acquisition",
@@ -4886,18 +5898,48 @@ def main():
         COMMANDER_COLOR_IDENTITY = set(commander_card['color_identity'])
     COMMANDER_COLOR_IDENTITY_COUNT = len(COMMANDER_COLOR_IDENTITY)
 
-    display_commander_card(commander_card, commander_combos_regex, outformat = outformat,
-                           outdir = args.outdir)
-
     compute_invalid_colors()
 
     valid_colors = list(filter(filter_colors, cards))
     valid_rules0 = list(filter(filter_all_at_once, valid_colors))
     cards_ok = valid_rules0
 
+    input_deck_cards = []
+    input_deck_cards_not_playable = []
+    input_deck_cards_names_not_found = []
+    if input_deck_cards_names:
+        for card_name in input_deck_cards_names:
+            card = get_card(card_name, cards_ok, strict = True)
+            if not card:
+                card = get_card(card_name, cards, strict = True)
+                if card:
+                    input_deck_cards_not_playable.append(card)
+                    continue
+            if not card:
+                input_deck_cards_names_not_found.append(card_name)
+                continue
+            input_deck_cards.append(card)
+
+    # HTML specifics
+    if args.html:
+        def colored(text, color, *pos, **kwargs):  # pylint: disable=unused-variable,unused-argument,redefined-outer-name
+            """Return the text colored"""
+            return '<span class="'+color+'">'+text+'</span>'
+
+        display_html_header(cards_preselected = input_deck_cards)
+
+    if args.input_deck_file:
+        print_input_deck_info(input_deck_cards, input_deck_cards_names_not_found,
+                              input_deck_cards_not_playable, outformat = outformat)
+
+    print_all_cards_stats(cards, outformat = outformat)
+
+    display_commander_card(commander_card, commander_combos_regex, outformat = outformat,
+                           outdir = args.outdir)
+
     print_deck_cards_stats(cards, valid_colors, valid_rules0, outformat = outformat)
 
-    display_deck_building_header(outformat = outformat)
+    display_deck_building_header(outformat = outformat, show_deck_info=bool(args.input_deck_file))
 
     commander_combos_no_filter = get_combos(combos, cards, name = COMMANDER_NAME, only_ok = False)
     commander_combos = get_combos(combos, cards_ok, name = COMMANDER_NAME)
@@ -4949,6 +5991,11 @@ def main():
         compare_with_hand_crafted_list(selection, 'ramp_cards.list.txt',
                                        'Ramp cards missing (VS ramp_cards.list.txt)',
                                        cards_ok)
+
+    cards_no_pay_cards = assist_no_pay_cards(
+        [c for c in cards_ok if c not in cards_land_fetch and c not in cards_ramp_cards],
+        max_list_items = args.max_list_items,
+        outformat = outformat)
 
     cards_draw = assist_draw_cards(
         [c for c in cards_ok if c not in cards_land_fetch],
@@ -5025,14 +6072,21 @@ def main():
          and c not in cards_removal and c not in lands],
         max_list_items = args.max_list_items, outformat = outformat)
 
-    cards_best = assist_best_cards(
+    cards_best_creatures = assist_best_creature_cards(
         cards_ok, max_list_items = args.max_list_items, outformat = outformat)
+
+    cards_effects = assist_creature_effects(cards_ok, max_list_items = args.max_list_items,
+                                                    outformat = outformat)
+
+    cards_best_instant_or_sorcery = assist_best_instant_or_sorcery_cards(
+        cards_ok, max_list_items = args.max_list_items, outformat = outformat)
+
 
     # TODO select 1 'I win' suprise card
 
     # TODO for each turn N present a list of possible N-drop cards
 
-    print('Cards selection:', file=sys.stderr)
+    print('DEBUG Cards selection:', file=sys.stderr)
     cards_selection = []
     cards_selection.append(commander_card)
     for title, cards_list in {
@@ -5042,6 +6096,7 @@ def main():
             'Lands': cards_lands,
             'Fetch land': cards_land_fetch,
             'Ramp': cards_ramp_cards,
+            'No pay': cards_no_pay_cards,
             'Draw': cards_draw,
             'Tutor': cards_tutor,
             'Removal': cards_removal,
@@ -5050,12 +6105,46 @@ def main():
             'Graveyard recursion': cards_graveyard_recursion,
             'Graveyard hate': cards_graveyard_hate,
             'Copy': cards_copy,
-            'Best': cards_best}.items():
-        print('  ', title+':', len(cards_list), file=sys.stderr)
-        for card in cards_list:
+            'Best creatures': cards_best_creatures,
+            'Creatures effects': cards_effects,
+            'Best instant/sorcery': cards_best_instant_or_sorcery}.items():
+        if cards_list:
+            print('DEBUG   ', title+':', len(cards_list), file=sys.stderr)
+            for card in cards_list:
+                if card not in cards_selection:
+                    cards_selection.append(card)
+    print('DEBUG TOTAL (unique):', len(cards_selection), file=sys.stderr)
+
+    if input_deck_cards:
+        not_matching_selection = []
+        for card in input_deck_cards:
             if card not in cards_selection:
-                cards_selection.append(card)
-    print('TOTAL (unique):', len(cards_selection), file=sys.stderr)
+                not_matching_selection.append(card)
+
+        if not args.html:
+            print('')
+            print('Input deck card in the selection:',
+                  len(input_deck_cards) - len(not_matching_selection))
+            print('')
+
+        if not_matching_selection:
+            if args.html:
+                html = ''
+                html += '      <div id="cards-not-suggested">'+'\n'
+                html += '        <h4>Cards not in the suggestion: '+str(len(not_matching_selection))
+                html += ' <small>(try with a bigger <em>--max-list-items</em>, or if they should '
+                html += 'have been suggested <a href="https://github.com/mbideau/MTG/issues">'
+                html += 'open a issue</a>)</small></h4>'+'\n'
+                html += print_cards_list(not_matching_selection, return_str = True,
+                                         outformat = outformat)
+                html += '      </div>'+'\n'
+                print(html)
+
+            if not args.html:
+                print('Input deck cards not in the selection:', len(not_matching_selection))
+                print('')
+                print_cards_list(not_matching_selection, indent = 3)
+                print('')
 
     if args.html:
         html = ''
