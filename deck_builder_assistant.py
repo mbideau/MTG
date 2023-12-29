@@ -4983,19 +4983,21 @@ def display_commander_card(card, commander_combos_regex, outformat = 'console', 
 
     commander_color_name = get_card_colored(card)
 
-    # image
-    get_commander_img = outformat == 'html' or (USE_SIXEL and sys.stdout.isatty())
-    imgpath, imgwidth, imgheight = None, None, None
-    if get_commander_img:
-        imgpath, imgwidth, imgheight = get_card_image(card, imgformat = 'normal', outdir = outdir)
-
     # html
     if outformat == 'html':
+
+        imgurl = ''
+        if 'image_uris' in card and 'normal' in card['image_uris']:
+            imgurl = card['image_uris']['normal']
+        elif ('card_faces' in card and card['card_faces'] and 'image_uris' in card['card_faces'][0]
+              and 'normal' in card['card_faces'][0]['image_uris']):
+            imgurl = card['card_faces'][0]['image_uris']['normal']
+
         html = ''
         html += '  <h2 class="commander-title">Commander</h2>'+'\n'
         html += '  <div class="commander-card">'+'\n'
         html += '    <div class="image">'+'\n'
-        html += '      <img src="'+imgpath+'" />'+'\n'
+        html += '      <img src="'+imgurl+'" alt="image of card '+COMMANDER_NAME+'"/>'+'\n'
         html += '    </div>'+'\n'
         html += '    <div class="attributes">'+'\n'
         html += '      <dl>'+'\n'
@@ -5025,6 +5027,12 @@ def display_commander_card(card, commander_combos_regex, outformat = 'console', 
 
     # console
     if outformat == 'console':
+
+        # image
+        imgpath, imgwidth, imgheight = None, None, None
+        if USE_SIXEL and sys.stdout.isatty():
+            imgpath, imgwidth, imgheight = get_card_image(card, imgformat = 'normal', outdir = outdir)
+
         print('')
         print('')
         print('### Commander card ###')
