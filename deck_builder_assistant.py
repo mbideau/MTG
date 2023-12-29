@@ -1869,7 +1869,7 @@ def assist_land_fetch(cards, land_types_invalid_regex, max_list_items = None, ou
                 'in(to)? (your|their) hand', card_oracle_texts_low)):
             cards_land_fetch_by_feature['to hand'+cond_text].append(card)
         elif list(search_strings(
-                r'puts? (it|that card|one( of them| of those cards)?|them|those cards) '
+                r'puts? (it|that card|one( of them| of those cards)?|them|(those|both) cards) '
                 'on(to)? the battlefield', card_oracle_texts_low)):
             cards_land_fetch_by_feature['to battlefield'+cond_text].append(card)
         elif list(search_strings('put (that card|them) on top', card_oracle_texts_low)):
