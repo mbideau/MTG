@@ -1232,36 +1232,23 @@ def filter_stickers(item):
     """Remove cards that are Stickers"""
     return 'type_line' not in item or item['type_line'] != 'Stickers'
 
-# TODO rename to 'rules_0' and use some 'preset'
-def filter_all_at_once(item):
+def filter_rules0(item, preset):
     """Remove card if it doesn't pass all filters"""
 
-    # empty card
-    if not filter_empty(item):
-        return False
-
-    # commander legal
-    if not filter_not_legal_and_banned(item):
-        return False
-
     # xmage banned
-    if not filter_xmage_banned(item):
+    if 'with-xmage-banned' in preset and not filter_xmage_banned(item):
         return False
 
     # rarity: less rare than defined rarity
-    if not filter_mythic_and_special(item):
+    if 'no-mythic' in preset and not filter_mythic_and_special(item):
         return False
 
     # price: not above a defined amount in EUR/USD
-    if not filter_price(item):
-        return False
-
-    # color: only allowed colors
-    if not filter_colors(item):
+    if 'no-expensive' in preset and not filter_price(item):
         return False
 
     # no stickers or tickets
-    if not filter_stickers(item):
+    if 'no-stickers' in preset and not filter_stickers(item):
         return False
 
     # default
@@ -1351,13 +1338,13 @@ def sort_cards_by_cmc_and_name(cards_list):
     return list(sorted(cards_list,
                        key=lambda c: score_card_from_cmc_and_mana_cost_len(c) + c['name']))
 
-def print_all_cards_stats(cards, outformat = 'console'):
+def print_all_cards_stats(cards, non_empty_cards, commander_legal, valid_rules0, preset,
+                          outformat = 'console'):
     """Print statistics about all cards"""
 
-    empty = list(filter(lambda c: not filter_empty(c), cards))
-    illegal = list(filter(lambda c: not filter_not_legal_and_banned(c), cards))
-    xmage_banned = list(filter(lambda c: not filter_xmage_banned(c), cards))
-    cards_mythic_or_special = list(filter(lambda c: not filter_mythic_and_special(c), cards))
+    empty_cards_count = len(cards) - len(non_empty_cards)
+    illegal_cards_count = len(non_empty_cards) - len(commander_legal)
+    violate_rules0 = len(commander_legal) - len(valid_rules0)
     without_price_eur = list(filter(lambda c: not c['prices']['eur'], cards))
     without_price_usd = list(filter(lambda c: not c['prices']['usd'], cards))
     max_price_eur = max(map(lambda c: float(c['prices']['eur'] or 0), cards))
@@ -1376,13 +1363,11 @@ def print_all_cards_stats(cards, outformat = 'console'):
         html += '      <dt>Total cards</dt>'+'\n'
         html += '      <dd>'+str(len(cards))+'</dd>'+'\n'
         html += '      <dt>Empty cards</dt>'+'\n'
-        html += '      <dd>'+str(len(empty))+'</dd>'+'\n'
+        html += '      <dd>'+str(empty_cards_count)+'</dd>'+'\n'
         html += '      <dt>Illegal or banned</dt>'+'\n'
-        html += '      <dd>'+str(len(illegal))+'</dd>'+'\n'
-        html += '      <dt>XMage banned</dt>'+'\n'
-        html += '      <dd>'+str(len(xmage_banned))+'</dd>'+'\n'
-        html += '      <dt>Mythic or special</dt>'+'\n'
-        html += '      <dd>'+str(len(cards_mythic_or_special))+'</dd>'+'\n'
+        html += '      <dd>'+str(illegal_cards_count)+'</dd>'+'\n'
+        html += '      <dt>Violate rules 0 <small>('+preset+')</small></dt>'+'\n'
+        html += '      <dd>'+str(violate_rules0)+'</dd>'+'\n'
         html += '      <dt>Without price EUR</dt>'+'\n'
         html += '      <dd>'+str(len(without_price_eur))+'</dd>'+'\n'
         html += '      <dt>Without price USD</dt>'+'\n'
@@ -1410,13 +1395,11 @@ def print_all_cards_stats(cards, outformat = 'console'):
         print('')
         print('Total cards:', len(cards))
         print('')
-        print('Empty cards:', len(empty))
+        print('Empty cards:', empty_cards_count)
         print('')
-        print('Illegal or banned:', len(illegal))
+        print('Illegal or banned:', illegal_cards_count)
         print('')
-        print('XMage banned:', len(xmage_banned))
-        print('')
-        print('Mythic or special:', len(cards_mythic_or_special))
+        print('Violate rules 0 ('+preset+'):', violate_rules0)
         print('')
         print('Without price EUR:', len(without_price_eur))
         print('Without price USD:', len(without_price_usd))
@@ -5778,10 +5761,11 @@ def main():
 
     parser = ArgumentParser(
         prog='deck_builder_assistant.py',
-        description='Generate a deck base, and make suggestion for an existing deck',
+        description=('A Magic The Gathering deck builder assistant for Commander mode, suggesting '
+                     'cards based on the commander'),
         epilog='Enjoy !')
 
-    parser.add_argument('commander_name')
+    parser.add_argument('commander_name', nargs='?', help='the commnder name')
     parser.add_argument('deck_path', nargs='?', help='an existing deck')
     parser.add_argument('-i', '--input-deck-file',
                         help='path to a file containing an existing deck (format: dek)')
@@ -5795,20 +5779,40 @@ def main():
                         help='output to this file (default to stdout)')
     parser.add_argument('-d', '--outdir', default='/tmp',
                         help='output to this directory (default to /tmp)')
+    parser.add_argument('-0', '--rules0', default='no-expensive with-xmage-banned no-stickers',
+                        help="rules 0 preset (default to 'no-expensive with-xmage-banned no-stickers')")
+    parser.add_argument('--list-rules0-preset', action='store_true', help="list rules 0 preset")
     parser.add_argument('--html', action='store_true', help='output format to an HTML page')
     # TODO Add a parameter to exclude MTG sets by name or code
     # TODO Add a parameter to prevent cards comparison with hand crafted list
     args = parser.parse_args()
+
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
+        sys.exit(0)
+
+    if args.list_rules0_preset:
+        print('')
+        print("Use any combination of the following filter (separated by space ' '):")
+        for preset in ['no-expensive', 'no-mythic', 'no-stickers', 'with-xmage-banned']:
+            print('  ', preset)
+        print('')
+        print("Default is: 'no-expensive with-xmage-banned no-stickers'")
+        print('')
+        sys.exit(0)
 
     if args.list_combos_effects and args.html:
         print("Error: option '--list-combos-effects' and '--html' are mutualy exclusive "
               "(choose only one)", file=sys.stderr)
         sys.exit(1)
 
+    if not args.list_combos_effects and not args.commander_name:
+        print("Error: commander name empty (and not using option '--list-combos-effects' nor "
+              "'--list-rules0-preset'", file=sys.stderr)
+        sys.exit(1)
+
     if args.output != sys.stdout:
         sys.stdout = open(args.output, 'wt', encoding='utf-8')  # pylint: disable=consider-using-with
-
-    COMMANDER_NAME = args.commander_name
 
     if sys.stdout.isatty():  # in a terminal
         TERM_COLS, TERM_LINES = os.get_terminal_size()
@@ -5863,6 +5867,8 @@ def main():
             print(f'   {count:>6}  {effect}')
         sys.exit(0)
 
+    COMMANDER_NAME = args.commander_name
+
     input_deck_cards_names = []
     if args.input_deck_file:
         input_deck_cards_names = get_input_deck_cards(args.input_deck_file)
@@ -5900,8 +5906,10 @@ def main():
 
     compute_invalid_colors()
 
-    valid_colors = list(filter(filter_colors, cards))
-    valid_rules0 = list(filter(filter_all_at_once, valid_colors))
+    non_empty_cards = list(filter(filter_empty, cards))
+    commander_legal = list(filter(filter_not_legal_and_banned, non_empty_cards))
+    valid_colors = list(filter(filter_colors, commander_legal))
+    valid_rules0 = list(filter(lambda c: filter_rules0(c, args.rules0), valid_colors))
     cards_ok = valid_rules0
 
     input_deck_cards = []
@@ -5932,7 +5940,8 @@ def main():
         print_input_deck_info(input_deck_cards, input_deck_cards_names_not_found,
                               input_deck_cards_not_playable, outformat = outformat)
 
-    print_all_cards_stats(cards, outformat = outformat)
+    print_all_cards_stats(cards, non_empty_cards, commander_legal, valid_rules0, args.rules0,
+                          outformat = outformat)
 
     display_commander_card(commander_card, commander_combos_regex, outformat = outformat,
                            outdir = args.outdir)
