@@ -1254,6 +1254,10 @@ def filter_rules0(item, preset):
     # default
     return True
 
+def filter_exclude_set(item, sets):
+    """Remove cards belonging to sets"""
+    return not sets or 'set' not in item or item['set'].upper() not in sets
+
 def filter_lands(item):
     """Keep only lands"""
     return (item['type_line'].startswith('Land')
@@ -1338,12 +1342,13 @@ def sort_cards_by_cmc_and_name(cards_list):
     return list(sorted(cards_list,
                        key=lambda c: score_card_from_cmc_and_mana_cost_len(c) + c['name']))
 
-def print_all_cards_stats(cards, non_empty_cards, commander_legal, valid_rules0, preset,
-                          outformat = 'console'):
+def print_all_cards_stats(cards, non_empty_cards, commander_legal, without_excluded_sets,
+                          sets_excluded, valid_rules0, rules0, outformat = 'console'):
     """Print statistics about all cards"""
 
     empty_cards_count = len(cards) - len(non_empty_cards)
     illegal_cards_count = len(non_empty_cards) - len(commander_legal)
+    excluded_sets_count = len(commander_legal) - len(without_excluded_sets)
     violate_rules0 = len(commander_legal) - len(valid_rules0)
     without_price_eur = list(filter(lambda c: not c['prices']['eur'], cards))
     without_price_usd = list(filter(lambda c: not c['prices']['usd'], cards))
@@ -1366,7 +1371,9 @@ def print_all_cards_stats(cards, non_empty_cards, commander_legal, valid_rules0,
         html += '      <dd>'+str(empty_cards_count)+'</dd>'+'\n'
         html += '      <dt>Illegal or banned</dt>'+'\n'
         html += '      <dd>'+str(illegal_cards_count)+'</dd>'+'\n'
-        html += '      <dt>Violate rules 0 <small>('+preset+')</small></dt>'+'\n'
+        html += '      <dt>Excluded sets <small>('+sets_excluded+')</small></dt>'+'\n'
+        html += '      <dd>'+str(excluded_sets_count)+'</dd>'+'\n'
+        html += '      <dt>Violate rules 0 <small>('+rules0+')</small></dt>'+'\n'
         html += '      <dd>'+str(violate_rules0)+'</dd>'+'\n'
         html += '      <dt>Without price EUR</dt>'+'\n'
         html += '      <dd>'+str(len(without_price_eur))+'</dd>'+'\n'
@@ -1399,7 +1406,9 @@ def print_all_cards_stats(cards, non_empty_cards, commander_legal, valid_rules0,
         print('')
         print('Illegal or banned:', illegal_cards_count)
         print('')
-        print('Violate rules 0 ('+preset+'):', violate_rules0)
+        print('Excluded sets ('+sets_excluded+'):', excluded_sets_count)
+        print('')
+        print('Violate rules 0 ('+rules0+'):', violate_rules0)
         print('')
         print('Without price EUR:', len(without_price_eur))
         print('Without price USD:', len(without_price_usd))
@@ -1415,15 +1424,13 @@ def print_all_cards_stats(cards, non_empty_cards, commander_legal, valid_rules0,
         print('Without keywords and text:', len(without_keywords_nor_text))
         print('')
 
-def print_deck_cards_stats(cards, valid_colors, valid_rules0, outformat = 'console'):
+def print_deck_cards_stats(cards, invalid_colors_cards_count, outformat = 'console'):
     """Print statistics about deck's cards"""
 
-    invalid_colors_len = len(cards) - len(valid_colors)
     invalid_colors_colored = ','.join(list(map(lambda t: colorize_mana(t, no_braces = True),
                                                INVALID_COLORS)))
-    removed_by_rules0_len = len(valid_colors) - len(valid_rules0)
-    max_price_eur = max(map(lambda c: float(c['prices']['eur'] or 0), valid_rules0))
-    max_price_usd = max(map(lambda c: float(c['prices']['usd'] or 0), valid_rules0))
+    max_price_eur = max(map(lambda c: float(c['prices']['eur'] or 0), cards))
+    max_price_usd = max(map(lambda c: float(c['prices']['usd'] or 0), cards))
 
     if outformat == 'html':
         html = ''
@@ -1431,9 +1438,7 @@ def print_deck_cards_stats(cards, valid_colors, valid_rules0, outformat = 'conso
         html += "    <h3>Stats: deck's cards and rules 0</h3>"+'\n'
         html += '    <dl>'+'\n'
         html += '      <dt>Invalid colors</dt>'+'\n'
-        html += '      <dd>'+invalid_colors_colored+' ('+str(invalid_colors_len)+')'+'</dd>'+'\n'
-        html += '      <dt>Removed by rules 0</dt>'+'\n'
-        html += '      <dd>'+str(removed_by_rules0_len)+'</dd>'+'\n'
+        html += '      <dd>'+invalid_colors_colored+' ('+str(invalid_colors_cards_count)+')'+'</dd>'+'\n'
         html += '      <dt>Price max EUR</dt>'+'\n'
         html += '      <dd>'+str(max_price_eur)+'</dd>'+'\n'
         html += '      <dt>Price max USD</dt>'+'\n'
@@ -1447,9 +1452,7 @@ def print_deck_cards_stats(cards, valid_colors, valid_rules0, outformat = 'conso
         print('')
         print('### Stats for this deck and rules 0 ###')
         print('')
-        print('Invalid colors', invalid_colors_colored, '('+str(invalid_colors_len)+')')
-        print('')
-        print('Removed by rules 0:', removed_by_rules0_len)
+        print('Invalid colors', invalid_colors_colored, '('+str(invalid_colors_cards_count)+')')
         print('')
         print('Price max EUR:', max_price_eur)
         print('Price max USD:', max_price_usd)
@@ -5641,7 +5644,7 @@ def print_input_deck_info(cards, cards_names_not_found, cards_not_playable, outf
         if cards_not_playable:
             html += '    <div class="not-playable">'+'\n'
             html += '      <h4>Cards not playable '
-            html += '<small>(not rules 0 compatible, or wrong color)</small></h4>\n'
+            html += '<small>(not rules 0 compatible, in excluded sets, or wrong color)</small></h4>\n'
             html += print_cards_list(cards_not_playable, outformat = outformat, return_str = True,
                                      print_rarity = True)
             html += '    </div>'+'\n'
@@ -5660,7 +5663,7 @@ def print_input_deck_info(cards, cards_names_not_found, cards_not_playable, outf
                 print('     ', card_name)
             print('')
         if cards_not_playable:
-            print('   Cards not playable (not rules 0 compatible, or wrong color)')
+            print('   Cards not playable (not rules 0 compatible, in excluded sets, or wrong color)')
             print('')
             print_cards_list(cards_not_playable, outformat = outformat, indent = 6)
             print('')
@@ -5769,8 +5772,9 @@ def main():
     parser.add_argument('deck_path', nargs='?', help='an existing deck')
     parser.add_argument('-i', '--input-deck-file',
                         help='path to a file containing an existing deck (format: dek)')
-    parser.add_argument('-c', '--combo', nargs='*',
-                        help='filter combos that match the specified combo effect (regex friendly)')
+    parser.add_argument('-c', '--combo', nargs='*', # default=['(win|lose|damage)'],
+                        help='filter combos that match the specified combo effect (regex friendly, '
+                             "default to '(win|lose|damage)')")
     parser.add_argument('-l', '--list-combos-effects', action='store_true',
                         help='list combos effects')
     parser.add_argument('-m', '--max-list-items', type=int, default=10,
@@ -5782,6 +5786,8 @@ def main():
     parser.add_argument('-0', '--rules0', default='no-expensive with-xmage-banned no-stickers',
                         help="rules 0 preset (default to 'no-expensive with-xmage-banned no-stickers')")
     parser.add_argument('--list-rules0-preset', action='store_true', help="list rules 0 preset")
+    parser.add_argument('-x', '--exclude', nargs='*', default=['set:LTR', 'set:SWS'],
+                        help="exclude Sets or Cards (default to: 'set:LTR|set:SWS')")
     parser.add_argument('--html', action='store_true', help='output format to an HTML page')
     # TODO Add a parameter to exclude MTG sets by name or code
     # TODO Add a parameter to prevent cards comparison with hand crafted list
@@ -5906,11 +5912,23 @@ def main():
 
     compute_invalid_colors()
 
+    all_excludes = '|'.join(args.exclude)
+    sets_excluded = list(map(lambda x: x.replace('set:', '').strip().upper(),
+                             filter(lambda x: x.startswith('set:'),
+                                    map(str.strip, all_excludes.split('|')))))
+    cards_excluded = list(map(lambda x: x.replace('card:', '').strip(),
+                              filter(lambda x: x.startswith('card:'),
+                                     map(str.strip, all_excludes.split('|')))))
+
     non_empty_cards = list(filter(filter_empty, cards))
     commander_legal = list(filter(filter_not_legal_and_banned, non_empty_cards))
-    valid_colors = list(filter(filter_colors, commander_legal))
-    valid_rules0 = list(filter(lambda c: filter_rules0(c, args.rules0), valid_colors))
-    cards_ok = valid_rules0
+    without_excluded_sets = list(filter(lambda c: filter_exclude_set(c, sets_excluded),
+                                        commander_legal))
+    without_excluded_cards = list(filter(
+        lambda c: 'name' not in c or c['name'] not in cards_excluded, without_excluded_sets))
+    valid_rules0 = list(filter(lambda c: filter_rules0(c, args.rules0), without_excluded_cards))
+    valid_colors = list(filter(filter_colors, valid_rules0))
+    cards_ok = valid_colors
 
     input_deck_cards = []
     input_deck_cards_not_playable = []
@@ -5940,13 +5958,13 @@ def main():
         print_input_deck_info(input_deck_cards, input_deck_cards_names_not_found,
                               input_deck_cards_not_playable, outformat = outformat)
 
-    print_all_cards_stats(cards, non_empty_cards, commander_legal, valid_rules0, args.rules0,
-                          outformat = outformat)
+    print_all_cards_stats(cards, non_empty_cards, commander_legal, without_excluded_sets,
+                          ','.join(sets_excluded), valid_rules0, args.rules0, outformat = outformat)
 
     display_commander_card(commander_card, commander_combos_regex, outformat = outformat,
                            outdir = args.outdir)
 
-    print_deck_cards_stats(cards, valid_colors, valid_rules0, outformat = outformat)
+    print_deck_cards_stats(cards_ok, len(valid_rules0) - len(valid_colors), outformat = outformat)
 
     display_deck_building_header(outformat = outformat, show_deck_info=bool(args.input_deck_file))
 
