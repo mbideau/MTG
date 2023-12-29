@@ -342,12 +342,146 @@ COPY_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
     "exile this card from your graveyard: create a token that's a copy of it",
 ]))+')'
 
+COUNTERSPELL_CARDS_REGEX = {
+    'non specific target, no condition': [
+        r'counter target spell\.'],
+    'non specific target, condition': [
+        'counter target spell unless'],
+    'specific target, no condition': [
+        r'counter target(( | or |, )(non)?(enchantment|creature|planeswalker|instant|sorcery|artifact))+ spell\.',
+        r'counter target spell that targets (( | or |, )(non)?(enchantment|creature|planeswalker|instant|sorcery|artifact))\.',
+        ],
+    'specific target, condition': [
+        'counter target(( | or |, )(non)?(enchantment|creature|planeswalker|instant|sorcery|artifact))+ spell unless',
+        'counter target spell that targets (( | or |, )(non)?(enchantment|creature|planeswalker|instant|sorcery|artifact)) unless',
+        ],
+}
+COUNTERSPELL_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
+    'counter on ',
+]))+')'
+
+CANNOTBECOUNTERED_CARDS_REGEX = {
+    'all spells': [r"(^|\n|[,.] )spells can't be countered\."],
+    'all your spells': [r"(^|\n|[,.] )spells (you control|you cast) can't be countered\."],
+    'all your spells, condition': [
+        r"(^|\n|[,.] )spells (you control|you cast) with mana value [^.]+ can't be countered\.",
+        r"(^|\n|[,.] )[^.]+ spells (you control|you cast) can't be countered\."],
+    'target spell': [
+        r"(that|this|target) spell (can't|cannot) be countered"],
+}
+CANNOTBECOUNTERED_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
+    "human spells you control can't be countered",
+]))+')'
+
+CANNOTATTACK_CARDS_REGEX = {
+    'no specific target, no condition': [
+        r"creatures( your opponent control)? can't attack(\.| you( or a planeswalker( you control)?)?\.)"],
+    'no specific target, condition': [
+        r"creatures( your opponent control)? can't attack( you( or a planeswalker( you control)?)?) unless"],
+    'specific target, no condition': [
+        r"creatures( of the chosen color( with(out)? \w+)?| with(out)? \w+) can't attack(\.| you( or a planeswalker( you control)?)?\.)"],
+    'specific target, condition': [
+        r"creatures( of the chosen color( with(out)? \w+)?| with(out)? \w+) can't attack( you( or a planeswalker( you control)?)?) unless"],
+}
+CANNOTATTACK_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
+    'for example, you may change "black creatures can'+"'"+'t attack"',
+    r"the chosen creatures attack if able, and other creatures can't attack",
+]))+')'
+
+# TODO add more regexes
+CANNOTCASTSPELL_CARDS_REGEX = {
+    'only affect opponent': [r"your opponents can't cast spells( this turn)?\."],
+    'affect all, condition': [r"players can't cast spells( this turn)? unless"],
+}
+CANNOTCASTSPELL_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
+    'toto',
+]))+')'
+
+PREVENTDAMAGE_CARDS_REGEX = {
+    'all to you': [
+        r"prevent all( combat)? damage that would be dealt to you( this turn)?\."],
+    'all to your creatures': [
+        r"prevent all( combat)? damage that would be dealt to (your creatures|creatures you control)( this turn)?\."],
+    'all creatures': [
+        r"prevent all( combat)? damage that would be dealt to creatures( this turn)?\."],
+    'by target creature': [
+        (r"prevent all( combat)? damage that would be (dealt to( you| creatures( you control)?)?"
+         r"( and dealt by)|dealt by) that creature( this turn)?\.")],
+}
+PREVENTDAMAGE_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
+    'toto',
+]))+')'
+
+GAINCONTROL_CARDS_REGEX = {
+    'all': [
+        r"gain control"],
+    'multiple targets': [
+        r"gain control of x target creatures and/or planeswalkers\.",
+        r"gain control of up to (two|three|four|five) target creatures\.",
+        r"gain control of each noncommander creature with mana value [0-9]?[0-9x] or less\.",
+    ],
+    'multiple targets, only in multiplayers': [
+        (r"for each opponent, gain control of up to one target creature( or planeswalker)? "
+         "that player controls"),
+        ("for each money vote, choose a permanent owned by the voter and gain control of it"),
+    ],
+    'enchantment target': [
+        r"(^|\n|[,:—•.] |—\d+: )you( gain)? control( of)? enchanted",
+    ],
+    'repeating': [
+        r":[^.]*gain control[^.]+",
+        (r"whenever [^.]+ enters the battlefield under your control, you may gain control of target"
+         r" \w+"),
+    ],
+    'effect': [
+        r"(^|\n|[,:—•.] |—\d+: )(you )?gain control of (that|this|target|all)",
+        r"target opponent chooses a creature they control\. you gain control of it\.",
+        (r"whenever enchanted creature deals damage to a creature, gain control of the other "
+         "creature"),
+        (r"whenever [^.]+ attacks and isn't blocked, you may gain control of target \w+ defending "
+         "player controls"),
+        (r"choose target artifact or creature\. [^.]*you may pay [^.]+ equal to that permanent's "
+         r"mana value\. if you do, gain control of it\."),
+        (r"choose target \w+ an opponent controls, then roll a d20\.(\n\d+(—\d+)? \| [^.]+\.){2}"
+         r"\n\d+(—\d+)? \| gain control of it until the end of your next turn"),
+        (r"at the beginning of your end step, clash with an opponent\. if you win, gain control of "
+         r"enchanted creature\."),
+    ],
+}
+GAINCONTROL_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
+    'toto',
+]))+')'
+
+PROTECT_CARDS_REGEX = {
+    'all': ["(gets?|gains?|have|has) (hexproof|ward|shroud|indestructible)"],
+    'you from spell': ["you (gets?|gains?|have|has) (hexproof|ward|shroud)"],
+    'permanent from spell': [
+        "permanent?( you control)? (gets?|gains?|have|has) (hexproof|ward|shroud)"],
+    'creatures from spell': [
+        r"creatures?( or \w+)?( you control)? (gets?|gains?|have|has) (hexproof|ward|shroud)",
+        "if it's an enchanted creature or enchantment creature, it also (gets?|gains?|have|has) (hexproof|ward|shroud)",
+        r"creatures?( or \w+)?( you control)? gets? [^.]+ and (gets?|gains?|have|has) (hexproof|ward|shroud)"],
+    'planeswalker from spell': [
+        r"planeswalkers?( or \w+)?( you control)?( of the chosen type)? (gets?|gains?|have|has) (hexproof|ward|shroud)"],
+    'artifacts from spell': [
+        r"artifacts?( or \w+)?( you control)? (gets?|gains?|have|has) (hexproof|ward|shroud)"],
+    'enchantments from spell': [
+        r"enchantments?( or \w+)?( you control)? (gets?|gains?|have|has) (hexproof|ward|shroud)"],
+    'other from spell': [
+        r"it (gets?|gains?|have|has) (hexproof|ward|shroud)"],
+    'any from destruction': ["(gets?|gains?|have|has) indestructible"],
+}
+PROTECT_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
+    "as though they didn't have (hexproof|ward|shroud|indestructible)",
+]))+')'
+
 WIPE_CARDS_REGEX = [
     r'((destroy|remove|exile) (all|every|each)|put (those( cards)?|them) in the graveyard)'
 ]
 WIPE_CARDS_BY_FEATURE_REGEX = {
     'only affect opponent': [
         "(exile|destroy) (all|each) (artifacts|creatures) your opponents control"],
+    'keep some': ["each player chooses [^.]+, then sacrifices the rest"],
     'selective': [
         "destroy each (nonland permanent|artifact and creature) with mana value [^.]+ counters",
         "destroy all creatures that dealt damage to you this turn",
@@ -4108,6 +4242,528 @@ def assist_best_instant_or_sorcery_cards(cards, max_list_items = None, outformat
 
     return best_instant_or_sorcery_cards_selected
 
+def assist_counterspell(cards, max_list_items = None, outformat = 'console'):
+    """Show pre-selected counter spell cards organised by features, for the user to select some"""
+
+    cards_counterspell_by_feature = {}
+    if COUNTERSPELL_CARDS_REGEX:
+        for card in cards:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_low = list(map(str.lower, oracle_texts))
+            for feature, regexp_list in COUNTERSPELL_CARDS_REGEX.items():
+                for regexp in regexp_list:
+                    if (list(search_strings(regexp, oracle_texts_low))
+                            and not list(search_strings(COUNTERSPELL_CARDS_EXCLUDE_REGEX,
+                                                        oracle_texts_low))):
+                        if feature not in cards_counterspell_by_feature:
+                            cards_counterspell_by_feature[feature] = []
+                        cards_counterspell_by_feature[feature].append(card)
+                        break
+
+    features = list(filter(lambda f: f in cards_counterspell_by_feature,
+                           COUNTERSPELL_CARDS_REGEX.keys()))
+    for feature in features:
+        cards_counterspell_by_feature[feature] = sort_cards_by_cmc_and_name(
+            cards_counterspell_by_feature[feature])
+
+    counterspell_stats_data = {}
+    counterspell_output_data = {'Counter Spell cards by target': {}}
+    for feature in features:
+        title = 'Counter Spell cards ('+feature+')'
+        cards_list = cards_counterspell_by_feature[feature]
+        counterspell_stats_data[title] = len(cards_list)
+        counterspell_output_data['Counter Spell cards by target'][title] = cards_list
+
+    counterspell_cards_selected = []
+    for data in counterspell_output_data.values():
+        for cards_list in data.values():
+            counterspell_cards_selected += cards_list[:max_list_items]
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h3 id="counterspell-cards">Counter Spell cards</h3>\n'
+        html += '    <h4>Stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in counterspell_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in counterspell_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'counterspell')
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, count in counterspell_stats_data.items():
+            print(title+':', count)
+        print('')
+        print('')
+        for section, data in counterspell_output_data.items():
+            print(section)
+            print('')
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print('')
+                print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 6, outformat = outformat)
+        print('')
+
+    return counterspell_cards_selected
+
+def assist_cannotbecountered(cards, max_list_items = None, outformat = 'console'):
+    """Show pre-selected cannot be countered cards organised by features, for the user to select some"""
+
+    cards_cannotbecountered_by_feature = {}
+    if CANNOTBECOUNTERED_CARDS_REGEX:
+        for card in cards:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_low = list(map(str.lower, oracle_texts))
+            for feature, regexp_list in CANNOTBECOUNTERED_CARDS_REGEX.items():
+                for regexp in regexp_list:
+                    if (list(search_strings(regexp, oracle_texts_low))
+                            and not list(search_strings(CANNOTBECOUNTERED_CARDS_EXCLUDE_REGEX,
+                                                        oracle_texts_low))):
+                        if feature not in cards_cannotbecountered_by_feature:
+                            cards_cannotbecountered_by_feature[feature] = []
+                        cards_cannotbecountered_by_feature[feature].append(card)
+                        break
+
+    features = list(filter(lambda f: f in cards_cannotbecountered_by_feature,
+                           CANNOTBECOUNTERED_CARDS_REGEX.keys()))
+    for feature in features:
+        cards_cannotbecountered_by_feature[feature] = sort_cards_by_cmc_and_name(
+            cards_cannotbecountered_by_feature[feature])
+
+    cannotbecountered_stats_data = {}
+    cannotbecountered_output_data = {'Cannot be countered cards by target': {}}
+    for feature in features:
+        title = 'Cannot be countered cards ('+feature+')'
+        cards_list = cards_cannotbecountered_by_feature[feature]
+        cannotbecountered_stats_data[title] = len(cards_list)
+        cannotbecountered_output_data['Cannot be countered cards by target'][title] = cards_list
+
+    cannotbecountered_cards_selected = []
+    for data in cannotbecountered_output_data.values():
+        for cards_list in data.values():
+            cannotbecountered_cards_selected += cards_list[:max_list_items]
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h3 id="cannotbecountered-cards">Cannot be countered cards</h3>\n'
+        html += '    <h4>Stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in cannotbecountered_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in cannotbecountered_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'cannotbecountered')
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, count in cannotbecountered_stats_data.items():
+            print(title+':', count)
+        print('')
+        print('')
+        for section, data in cannotbecountered_output_data.items():
+            print(section)
+            print('')
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print('')
+                print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 6, outformat = outformat)
+        print('')
+
+    return cannotbecountered_cards_selected
+
+def assist_cannotattack(cards, max_list_items = None, outformat = 'console'):
+    """Show pre-selected cannot attack cards organised by features, for the user to select some"""
+
+    cards_cannotattack_by_feature = {}
+    if CANNOTATTACK_CARDS_REGEX:
+        for card in cards:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_low = list(map(str.lower, oracle_texts))
+            for feature, regexp_list in CANNOTATTACK_CARDS_REGEX.items():
+                for regexp in regexp_list:
+                    if (list(search_strings(regexp, oracle_texts_low))
+                            and not list(search_strings(CANNOTATTACK_CARDS_EXCLUDE_REGEX,
+                                                        oracle_texts_low))):
+                        if feature not in cards_cannotattack_by_feature:
+                            cards_cannotattack_by_feature[feature] = []
+                        cards_cannotattack_by_feature[feature].append(card)
+                        break
+
+    features = list(filter(lambda f: f in cards_cannotattack_by_feature,
+                           CANNOTATTACK_CARDS_REGEX.keys()))
+    for feature in features:
+        cards_cannotattack_by_feature[feature] = sort_cards_by_cmc_and_name(
+            cards_cannotattack_by_feature[feature])
+
+    cannotattack_stats_data = {}
+    cannotattack_output_data = {'Cannot Attack cards by target': {}}
+    for feature in features:
+        title = 'Cannot Attack cards ('+feature+')'
+        cards_list = cards_cannotattack_by_feature[feature]
+        cannotattack_stats_data[title] = len(cards_list)
+        cannotattack_output_data['Cannot Attack cards by target'][title] = cards_list
+
+    cannotattack_cards_selected = []
+    for data in cannotattack_output_data.values():
+        for cards_list in data.values():
+            cannotattack_cards_selected += cards_list[:max_list_items]
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h3 id="cannotattack-cards">Cannot Attack cards</h3>\n'
+        html += '    <h4>Stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in cannotattack_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in cannotattack_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'cannotattack')
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, count in cannotattack_stats_data.items():
+            print(title+':', count)
+        print('')
+        print('')
+        for section, data in cannotattack_output_data.items():
+            print(section)
+            print('')
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print('')
+                print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 6, outformat = outformat)
+        print('')
+
+    return cannotattack_cards_selected
+
+def assist_cannotcastspell(cards, max_list_items = None, outformat = 'console'):
+    """Show pre-selected cannot cast spell cards organised by features, for the user to select some"""
+
+    cards_cannotcastspell_by_feature = {}
+    if CANNOTCASTSPELL_CARDS_REGEX:
+        for card in cards:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_low = list(map(str.lower, oracle_texts))
+            for feature, regexp_list in CANNOTCASTSPELL_CARDS_REGEX.items():
+                for regexp in regexp_list:
+                    if (list(search_strings(regexp, oracle_texts_low))
+                            and not list(search_strings(CANNOTCASTSPELL_CARDS_EXCLUDE_REGEX,
+                                                        oracle_texts_low))):
+                        if feature not in cards_cannotcastspell_by_feature:
+                            cards_cannotcastspell_by_feature[feature] = []
+                        cards_cannotcastspell_by_feature[feature].append(card)
+                        break
+
+    features = list(filter(lambda f: f in cards_cannotcastspell_by_feature,
+                           CANNOTCASTSPELL_CARDS_REGEX.keys()))
+    for feature in features:
+        cards_cannotcastspell_by_feature[feature] = sort_cards_by_cmc_and_name(
+            cards_cannotcastspell_by_feature[feature])
+
+    cannotcastspell_stats_data = {}
+    cannotcastspell_output_data = {'Cannot Cast Spell cards by target': {}}
+    for feature in features:
+        title = 'Cannot Cast Spell cards ('+feature+')'
+        cards_list = cards_cannotcastspell_by_feature[feature]
+        cannotcastspell_stats_data[title] = len(cards_list)
+        cannotcastspell_output_data['Cannot Cast Spell cards by target'][title] = cards_list
+
+    cannotcastspell_cards_selected = []
+    for data in cannotcastspell_output_data.values():
+        for cards_list in data.values():
+            cannotcastspell_cards_selected += cards_list[:max_list_items]
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h3 id="cannotcastspell-cards">Cannot Cast Spell cards</h3>\n'
+        html += '    <h4>Stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in cannotcastspell_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in cannotcastspell_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'cannotcastspell')
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, count in cannotcastspell_stats_data.items():
+            print(title+':', count)
+        print('')
+        print('')
+        for section, data in cannotcastspell_output_data.items():
+            print(section)
+            print('')
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print('')
+                print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 6, outformat = outformat)
+        print('')
+
+    return cannotcastspell_cards_selected
+
+def assist_preventdamage(cards, max_list_items = None, outformat = 'console'):
+    """Show pre-selected prevent damage cards organised by features, for the user to select some"""
+
+    cards_preventdamage_by_feature = {}
+    if PREVENTDAMAGE_CARDS_REGEX:
+        for card in cards:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_low = list(map(str.lower, oracle_texts))
+            for feature, regexp_list in PREVENTDAMAGE_CARDS_REGEX.items():
+                for regexp in regexp_list:
+                    if (list(search_strings(regexp, oracle_texts_low))
+                            and not list(search_strings(PREVENTDAMAGE_CARDS_EXCLUDE_REGEX,
+                                                        oracle_texts_low))):
+                        if feature not in cards_preventdamage_by_feature:
+                            cards_preventdamage_by_feature[feature] = []
+                        cards_preventdamage_by_feature[feature].append(card)
+                        break
+
+    features = list(filter(lambda f: f in cards_preventdamage_by_feature,
+                           PREVENTDAMAGE_CARDS_REGEX.keys()))
+    for feature in features:
+        cards_preventdamage_by_feature[feature] = sort_cards_by_cmc_and_name(
+            cards_preventdamage_by_feature[feature])
+
+    preventdamage_stats_data = {}
+    preventdamage_output_data = {'Prevent damage cards by target': {}}
+    for feature in features:
+        title = 'Prevent damage cards ('+feature+')'
+        cards_list = cards_preventdamage_by_feature[feature]
+        preventdamage_stats_data[title] = len(cards_list)
+        preventdamage_output_data['Prevent damage cards by target'][title] = cards_list
+
+    preventdamage_cards_selected = []
+    for data in preventdamage_output_data.values():
+        for cards_list in data.values():
+            preventdamage_cards_selected += cards_list[:max_list_items]
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h3 id="preventdamage-cards">Prevent damage cards</h3>\n'
+        html += '    <h4>Stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in preventdamage_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in preventdamage_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'preventdamage')
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, count in preventdamage_stats_data.items():
+            print(title+':', count)
+        print('')
+        print('')
+        for section, data in preventdamage_output_data.items():
+            print(section)
+            print('')
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print('')
+                print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 6, outformat = outformat)
+        print('')
+
+    return preventdamage_cards_selected
+
+def assist_gaincontrol(cards, max_list_items = None, outformat = 'console'):
+    """Show pre-selected gain control cards organised by features, for the user to select some"""
+
+    cards_gaincontrol_by_feature = {}
+    if GAINCONTROL_CARDS_REGEX:
+        for card in cards:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_low = list(map(str.lower, oracle_texts))
+            for feature, regexp_list in GAINCONTROL_CARDS_REGEX.items():
+                for regexp in regexp_list:
+                    if (list(search_strings(regexp, oracle_texts_low))
+                            and not list(search_strings(GAINCONTROL_CARDS_EXCLUDE_REGEX,
+                                                        oracle_texts_low))):
+                        if feature not in cards_gaincontrol_by_feature:
+                            cards_gaincontrol_by_feature[feature] = []
+                        cards_gaincontrol_by_feature[feature].append(card)
+                        break
+
+    features = list(filter(lambda f: f in cards_gaincontrol_by_feature,
+                           GAINCONTROL_CARDS_REGEX.keys()))
+    new_features = []
+    prev_feature_cards = []
+    for feature in features:
+        if feature == 'all':
+            continue
+        notpermanent = []
+        cards_gaincontrol_by_feature[feature] = [
+            c for c in cards_gaincontrol_by_feature[feature] if c not in prev_feature_cards]
+        for card in cards_gaincontrol_by_feature[feature]:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_low = list(map(str.lower, oracle_texts))
+            for regexp in GAINCONTROL_CARDS_REGEX[feature]:
+                reg = regexp + (r'[^.]+('
+                    #+r'for as long as (you control [^.]+|[^.]+ remains on the battlefield)'
+                    +r'until the end of your next turn'
+                    +r'|until (the )?end of turn'
+                    +r')\.')
+                if list(search_strings(reg, oracle_texts_low)):
+                    notpermanent.append(card)
+                    break
+        cur_feature_cards = cards_gaincontrol_by_feature[feature]
+        new_features.append(feature)
+        if notpermanent:
+            cards_gaincontrol_by_feature[feature] = [
+                c for c in cards_gaincontrol_by_feature[feature] if c not in notpermanent]
+            new_feature = feature+', not permanent'
+            cards_gaincontrol_by_feature[new_feature] = notpermanent
+            new_features.append(new_feature)
+        prev_feature_cards = cur_feature_cards
+
+    if 'all' in cards_gaincontrol_by_feature:
+        for card in cards_gaincontrol_by_feature['all']:
+            found = False
+            for feat, cards_list in cards_gaincontrol_by_feature.items():
+                if feat == 'all':
+                    continue
+                if card in cards_list:
+                    found = True
+                    break
+            if not found:
+                if 'other' not in cards_gaincontrol_by_feature:
+                    cards_gaincontrol_by_feature['other'] = []
+                    new_features.append('other')
+                cards_gaincontrol_by_feature['other'].append(card)
+        del cards_gaincontrol_by_feature['all']
+
+    features = new_features
+
+    for feature in features:
+        cards_gaincontrol_by_feature[feature] = sort_cards_by_cmc_and_name(
+            cards_gaincontrol_by_feature[feature])
+
+    gaincontrol_stats_data = {}
+    gaincontrol_output_data = {'Gain control cards by target': {}}
+    for feature in features:
+        title = 'Gain control cards ('+feature+')'
+        cards_list = cards_gaincontrol_by_feature[feature]
+        gaincontrol_stats_data[title] = len(cards_list)
+        gaincontrol_output_data['Gain control cards by target'][title] = cards_list
+
+    gaincontrol_cards_selected = []
+    for data in gaincontrol_output_data.values():
+        for cards_list in data.values():
+            gaincontrol_cards_selected += cards_list[:max_list_items]
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h3 id="gaincontrol-cards">Gain control cards</h3>\n'
+        html += '    <h4>Stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in gaincontrol_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in gaincontrol_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'gaincontrol')
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, count in gaincontrol_stats_data.items():
+            print(title+':', count)
+        print('')
+        print('')
+        for section, data in gaincontrol_output_data.items():
+            print(section)
+            print('')
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print('')
+                print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 6, outformat = outformat)
+        print('')
+
+    return gaincontrol_cards_selected
+
 def print_combo_card_names(combo):
     """Print card's names of a combo"""
 
@@ -4116,6 +4772,103 @@ def print_combo_card_names(combo):
         if combo['Card '+str(num)]:
             card_names.append(combo['Card '+str(num)])
     print(' + '.join(card_names))
+
+def assist_protect(cards, max_list_items = None, outformat = 'console'):
+    """Show pre-selected protect cards organised by features, for the user to select some"""
+
+    cards_protect_by_feature = {}
+    if PROTECT_CARDS_REGEX:
+        for card in cards:
+            oracle_texts = list(get_oracle_texts(card))
+            oracle_texts_low = list(map(str.lower, oracle_texts))
+            for feature, regexp_list in PROTECT_CARDS_REGEX.items():
+                for regexp in regexp_list:
+                    if (list(search_strings(regexp, oracle_texts_low))
+                            and not list(search_strings(PROTECT_CARDS_EXCLUDE_REGEX,
+                                                        oracle_texts_low))):
+                        if feature not in cards_protect_by_feature:
+                            cards_protect_by_feature[feature] = []
+                        cards_protect_by_feature[feature].append(card)
+                        break
+
+    features = list(filter(lambda f: f in cards_protect_by_feature,
+                           PROTECT_CARDS_REGEX.keys()))
+
+    if 'all' in cards_protect_by_feature:
+        for card in cards_protect_by_feature['all']:
+            found = False
+            for feat, cards_list in cards_protect_by_feature.items():
+                if feat == 'all':
+                    continue
+                if card in cards_list:
+                    found = True
+                    break
+            if not found:
+                if 'other' not in cards_protect_by_feature:
+                    cards_protect_by_feature['other'] = []
+                    features.append('other')
+                cards_protect_by_feature['other'].append(card)
+        del cards_protect_by_feature['all']
+        features = [f for f in features if f != 'all']
+
+    for feature in features:
+        cards_protect_by_feature[feature] = sort_cards_by_cmc_and_name(
+            cards_protect_by_feature[feature])
+
+    protect_stats_data = {}
+    protect_output_data = {'Protect cards by target': {}}
+    for feature in features:
+        title = 'Protect cards ('+feature+')'
+        cards_list = cards_protect_by_feature[feature]
+        protect_stats_data[title] = len(cards_list)
+        protect_output_data['Protect cards by target'][title] = cards_list
+
+    protect_cards_selected = []
+    for data in protect_output_data.values():
+        for cards_list in data.values():
+            protect_cards_selected += cards_list[:max_list_items]
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h3 id="protect-cards">Protect cards</h3>\n'
+        html += '    <h4>Stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in protect_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in protect_output_data.items():
+            html += '    <h4>'+section+'</h4>'+'\n'
+            for title, cards_list in data.items():
+                title += ': '+str(len(cards_list))
+                html += '    <article>'+'\n'
+                html += '      <details>'+'\n'
+                html += '        <summary>'+title+'</summary>'+'\n'
+                html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                         limit = max_list_items, outformat = outformat,
+                                         return_str = True, card_feat = 'protect')
+                html += '      </details>'+'\n'
+                html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, count in protect_stats_data.items():
+            print(title+':', count)
+        print('')
+        print('')
+        for section, data in protect_output_data.items():
+            print(section)
+            print('')
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print('')
+                print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 6, outformat = outformat)
+        print('')
+
+    return protect_cards_selected
 
 def print_tup_combo(tup_combo, cards, indent = 0, print_header = False, max_cards = 4,
                     max_name_len = 30, separator_color = 'light_grey', separator_attrs = None,
@@ -4968,6 +5721,20 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '        <dd id="creature-effects-count">0</dd>'+'\n'
     html += '        <dt>Best instant/sorcery</dt>'+'\n'
     html += '        <dd id="best-instant-sorcery-count">0</dd>'+'\n'
+    html += '        <dt>Counter Spell</dt>'+'\n'
+    html += '        <dd id="counterspell-count">0</dd>'+'\n'
+    html += '        <dt>Cannot be countered</dt>'+'\n'
+    html += '        <dd id="cannotbecountered-count">0</dd>'+'\n'
+    html += '        <dt>Cannot attack</dt>'+'\n'
+    html += '        <dd id="cannotattack-count">0</dd>'+'\n'
+    html += '        <dt>Cannot cast spell</dt>'+'\n'
+    html += '        <dd id="cannotcastspell-count">0</dd>'+'\n'
+    html += '        <dt>Prevent damage</dt>'+'\n'
+    html += '        <dd id="preventdamage-count">0</dd>'+'\n'
+    html += '        <dt>Gain control</dt>'+'\n'
+    html += '        <dd id="gaincontrol-count">0</dd>'+'\n'
+    html += '        <dt>Protect</dt>'+'\n'
+    html += '        <dd id="protect-count">0</dd>'+'\n'
     html += '      </dl>'+'\n'
     html += '      <button class="action show" onclick="showDeckList()">'
     html += 'Show <small>/update</small> deck list</button>'+'\n'
@@ -5106,6 +5873,13 @@ def get_html_toc(cssclass = '', show_deck_info = False):
     html += '      <li><a href="#best-creature-cards">Best creature cards</a></li>'+'\n'
     html += '      <li><a href="#creature-effects-cards">Creature effects cards</a></li>\n'
     html += '      <li><a href="#best-instant-sorcery-cards">Best instant/sorcery cards</a></li>\n'
+    html += '      <li><a href="#counterspell-cards">Counter Spell cards</a></li>'+'\n'
+    html += '      <li><a href="#cannotbecountered-cards">Cannot be countered cards</a></li>'+'\n'
+    html += '      <li><a href="#cannotattack-cards">Cannot attack cards</a></li>'+'\n'
+    html += '      <li><a href="#cannotcastspell-cards">Cannot cast spell cards</a></li>'+'\n'
+    html += '      <li><a href="#preventdamage-cards">Prevent damage cards</a></li>'+'\n'
+    html += '      <li><a href="#gaincontrol-cards">Gain control cards</a></li>'+'\n'
+    html += '      <li><a href="#protect-cards">Protect cards</a></li>'+'\n'
     html += '    </ol>'+'\n'
     html += '  </nav>'+'\n'
     return html
@@ -6116,6 +6890,28 @@ def main():
     cards_best_instant_or_sorcery = assist_best_instant_or_sorcery_cards(
         cards_ok, max_list_items = args.max_list_items, outformat = outformat)
 
+    cards_counterspell = assist_counterspell(
+        cards_ok, max_list_items = args.max_list_items, outformat = outformat)
+
+    cards_cannotbecountered = assist_cannotbecountered(
+        [c for c in cards_ok if c not in cards_counterspell],
+        max_list_items = args.max_list_items, outformat = outformat)
+
+    cards_cannotattack = assist_cannotattack(
+        cards_ok, max_list_items = args.max_list_items, outformat = outformat)
+
+    cards_cannotcastspell = assist_cannotcastspell(
+        cards_ok, max_list_items = args.max_list_items, outformat = outformat)
+
+    cards_preventdamage = assist_preventdamage(
+        cards_ok, max_list_items = args.max_list_items, outformat = outformat)
+
+    cards_gaincontrol = assist_gaincontrol(
+        cards_ok, max_list_items = args.max_list_items, outformat = outformat)
+
+    cards_protect = assist_protect(
+        [c for c in cards_ok if c not in cards_effects],
+        max_list_items = args.max_list_items, outformat = outformat)
 
     # TODO select 1 'I win' suprise card
 
@@ -6142,7 +6938,14 @@ def main():
             'Copy': cards_copy,
             'Best creatures': cards_best_creatures,
             'Creatures effects': cards_effects,
-            'Best instant/sorcery': cards_best_instant_or_sorcery}.items():
+            'Best instant/sorcery': cards_best_instant_or_sorcery,
+            'Counter spell': cards_counterspell,
+            'Cannot be countered': cards_cannotbecountered,
+            'Cannot attack': cards_cannotattack,
+            'Cannot cast spell': cards_cannotcastspell,
+            'Prevent damage': cards_preventdamage,
+            'Gain control': cards_gaincontrol,
+            'Protect': cards_protect}.items():
         if cards_list:
             print('DEBUG   ', title+':', len(cards_list), file=sys.stderr)
             for card in cards_list:
