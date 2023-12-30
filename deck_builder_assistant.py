@@ -5275,25 +5275,21 @@ def assist_k_core_combos(combos, cards, regex, num_cards, excludes, max_cards = 
         html += '    <article>'+'\n'
         html += '      <details>'+'\n'
         html += '        <summary>'
-        html += ('All '+str(num_cards)+' cards combos with '+regex+' '+str(k_num)+'-core cards: '
-                 +str(k_len)+' cards')
+        html += str(k_num)+'-core '+str(num_cards)+' cards combos with '+regex+' cards'
         html += '</summary>'+'\n'
+        html += '        <h5>Combos: '+str(len(k_combos))+'</h5>'+'\n'
+        html += '        <table class="combos-list">'+'\n'
+        for index, tup_combo in enumerate(k_combos_order_cmc_max):
+            html += print_tup_combo(tup_combo, cards, max_cards = num_cards,
+                                    print_header = index == 0, outformat = outformat,
+                                    return_str = True)
+        html += '        </table>'+'\n'
+        html += '        <h5>Cards: '+str(k_len)+'</h5>'+'\n'
         html += '        <table class="cards-list">'+'\n'
         for node in k_nodes:
             card_name = nx_graph.nodes[node]['card']
             html += print_card(get_card(card_name, cards, strict = True), outformat = outformat,
                                return_str = True, card_feat = 'combos-k-core')
-        html += '        </table>'+'\n'
-        html += '      </details>'+'\n'
-        html += '      <details>'+'\n'
-        html += '        <summary>'
-        html += ('All '+str(num_cards)+' cards combos with '+regex+' '+str(k_num)+'-core combos: '
-                 +str(len(k_combos))+' combos')
-        html += '</summary>'+'\n'
-        html += '        <table class="combos-list">'+'\n'
-        for index, tup_combo in enumerate(k_combos_order_cmc_max):
-            html += print_tup_combo(tup_combo, cards, max_cards = num_cards,
-                                    print_header = index == 0, outformat = outformat, return_str = True)
         html += '        </table>'+'\n'
         html += '      </details>'+'\n'
         html += '    </article>'
@@ -6197,6 +6193,9 @@ def assist_commander_combos(commander_combos_no_filter, commander_combos, comman
 
         html += '    </dl>'+'\n'
 
+        if not c_combos_rank_1_x_cards:
+            html += '    <p>No <em>rank 1</em> commander combo found.</p>'+'\n'
+
         if c_combos_rank_1_x_cards:
             html += '    <h4 id="commander-combos-rank-1">'
             html += 'Combos rank 1 <small>(directly tied to the commander)</small></h4>'+'\n'
@@ -6226,6 +6225,9 @@ def assist_commander_combos(commander_combos_no_filter, commander_combos, comman
                                         return_str = True, card_feat = 'commander-combos')
                     html += '      </table>'+'\n'
                     html += '    </details>'+'\n'
+
+        if c_combos_rank_1_x_cards and not c_combos_rank_2_x_cards:
+            html += '    <p>No <em>rank 2</em> commander combo found.</p>'+'\n'
 
         if c_combos_rank_2_x_cards:
             html += '    <h4 id="commander-combos-rank-2">'
@@ -6903,8 +6905,13 @@ def main():
             print(html)
         cards_k_core = assist_k_core_combos(combos, cards_ok, commander_combos_regex, 2,
                                             cards_excludes, outformat = outformat)
+        if outformat == 'html' and not cards_k_core:
+            html = '    <p>No <em>k-core</em> combo found.</p>'+'\n'
+            print(html)
+
         # assist_k_core_combos(combos, cards_ok, commander_combos_regex, 3, cards_excludes,
         #                      outformat = outformat)
+
         if outformat == 'html':
             html = '  </section>'+'\n'
             print(html)
