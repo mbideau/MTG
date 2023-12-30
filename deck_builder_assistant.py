@@ -4874,7 +4874,7 @@ def assist_protect(cards, max_list_items = None, outformat = 'console'):
 
 def print_tup_combo(tup_combo, cards, indent = 0, print_header = False, max_cards = 4,
                     max_name_len = 30, separator_color = 'light_grey', separator_attrs = None,
-                    outformat = 'console', return_str = False):
+                    outformat = 'console', return_str = False, print_effect = True):
     """Print a combo from a tuple (cards_names, combo_infos)"""
 
     ret = ''
@@ -4892,6 +4892,7 @@ def print_tup_combo(tup_combo, cards, indent = 0, print_header = False, max_card
             html += '          <th class="cmc-min">CMC min</th>'+'\n'
             for index in range(1, max_cards + 1):
                 html += '          <th class="combo-card">Card '+str(index)+'</th>'+'\n'
+            html += '          <th class="effect">Effect</th>'+'\n'
             html += '        </tr>'+'\n'
 
         html += '        <tr class="combo-line">'+'\n'
@@ -4921,6 +4922,8 @@ def print_tup_combo(tup_combo, cards, indent = 0, print_header = False, max_card
         if len(combo_cards) < max_cards:
             for index in range(len(combo_cards), max_cards):
                 html += '          <td class="combo-card"></td>'+'\n'
+        combo_effect = combo_infos['infos']['r'].replace('Infinite', '∞').replace('infinite', '∞')
+        html += '          <td class="effect">'+combo_effect+'</td>'+'\n'
         html += '        </tr>'+'\n'
 
         ret = html
@@ -4934,6 +4937,7 @@ def print_tup_combo(tup_combo, cards, indent = 0, print_header = False, max_card
 
         c_format = '{indent:>'+str(indent)+'}{cmc_total:>9}{sep}{cmc_max:>7}{sep}{cmc_min:>7}{sep}'
         c_format += '{plus}'.join(list(map(lambda i: '{name_'+str(i)+'}', range(1, max_cards + 1))))
+        c_format += '{sep}{effect}'
         if print_header:
             c_params = {
                 'indent': '',
@@ -4941,7 +4945,8 @@ def print_tup_combo(tup_combo, cards, indent = 0, print_header = False, max_card
                 'plus': plus,
                 'cmc_total': 'CMC total',
                 'cmc_max': 'CMC max',
-                'cmc_min': 'CMC min'}
+                'cmc_min': 'CMC min',
+                'effect': 'Effect'}
             for index in range(1, max_cards + 1):
                 c_params['name_'+str(index)] = ('{:^'+str(max_name_len)+'}').format('card '+str(index))
             c_header = colored(c_format.format(**c_params), separator_color, attrs=separator_attrs)
@@ -4952,17 +4957,32 @@ def print_tup_combo(tup_combo, cards, indent = 0, print_header = False, max_card
             'plus': plus_colored,
             'cmc_total': int(combo_infos['cmc_total']),
             'cmc_max': int(combo_infos['cmc_max']),
-            'cmc_min': int(combo_infos['cmc_min'])}
+            'cmc_min': int(combo_infos['cmc_min']),
+            'effect': ''}
+        c_params_visible = c_params | {'sep': separator, 'plus': plus}
         for index, name in enumerate(combo_cards):
             card = get_card(name, cards, strict = True)
             c_params['name_'+str(index + 1)] = colored(
-                    ('{:^'+str(max_name_len)+'}').format(truncate_text(name, max_name_len)),
-                    get_card_colored(card))
+                ('{:^'+str(max_name_len)+'}').format(truncate_text(name, max_name_len)),
+                get_card_colored(card))
+            c_params_visible['name_'+str(index + 1)] = (
+                ('{:^'+str(max_name_len)+'}').format(truncate_text(name, max_name_len)))
         if len(combo_cards) < max_cards:
             # print('Warning', 'too few cards combo:', combo_cards, file=sys.stderr)
             for index in range(len(combo_cards), max_cards):
                 c_params['name_'+str(index + 1)] = ''
+                c_params_visible['name_'+str(index + 1)] = ''
         c_line = c_format.format(**c_params)
+
+        combo_effect = combo_infos['infos']['r'].replace('Infinite', '∞').replace('infinite', '∞')
+        c_line_visible = c_format.format(**c_params_visible)
+        line_visible_len = len(c_line_visible)
+        len_left = int(TERM_COLS) - 2 - line_visible_len
+        combo_effect_wrapped_lines = wrap(combo_effect, width = len_left, placeholder = '…')
+        combo_effect_wrapped = (
+            '⤵\n'+('{:>'+str(line_visible_len)+'}').format('')).join(combo_effect_wrapped_lines)
+        c_line += combo_effect_wrapped
+
         ret += c_line
 
     if not return_str:
@@ -5495,6 +5515,7 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '    }'+'\n'
     html += '    .combos-list th, .combos-list td { padding: 0 10px; text-align: center; }'+'\n'
     html += '    .combos-list th { color: gray; }'+'\n'
+    html += '    .combos-list td.effect { font-size: 0.9em; }'+'\n'
     html += '    .cards-list td { padding: 0 10px; text-align: right; }'+'\n'
     html += '    .cards-list .combo-completed td { text-align: left; font-size: 0.8em; }'+'\n'
     html += '    .cards-list td.name { text-align: center; }'+'\n'
@@ -6026,7 +6047,11 @@ def assist_commander_combos(commander_combos_no_filter, commander_combos, comman
         if commander_combos_regex:
             commander_combos_filtered = get_combos(combos, cards, name = COMMANDER_NAME,
                                                    combo_res_regex = commander_combos_regex)
-            c_combos = commander_combos_filtered
+            if commander_combos_filtered:
+                c_combos = commander_combos_filtered
+            else:
+                print('DEBUG', "no combo found when filtered with '"+commander_combos_regex+"'",
+                      file=sys.stderr)
 
         # rank 1
         combos_rank_1 = c_combos
@@ -6179,26 +6204,28 @@ def assist_commander_combos(commander_combos_no_filter, commander_combos, comman
             for count in range(2, 5):
                 key = '4+' if count == 4 else str(count)
 
-                html += '    <details>'+'\n'
-                html += '      <summary>'
-                html += ('Rank 1 combos with '+key+' cards: '
-                         +str(len(c_combos_rank_1_x_cards[key]['combos']))+' combos,'
-                         +'+'+str(len(c_combos_rank_1_x_cards[key]['cards names']))+' cards')
-                html += '</summary>'+'\n'
-                html += '      <h5>Combos</h5>'+'\n'
-                html += '      <table class="combos-list">'+'\n'
-                for index, tup_combo in enumerate(c_combos_rank_1_x_cards[key]['combos'].items()):
-                    html += print_tup_combo(tup_combo, cards, max_cards = count,
-                                            print_header = index == 0, outformat = outformat,
-                                            return_str = True)
-                html += '      </table>'+'\n'
-                html += '      <h5>Cards</h5>'+'\n'
-                html += '      <table class="cards-list">'+'\n'
-                for name in sorted(c_combos_rank_1_x_cards[key]['cards names']):
-                    html += print_card(get_card(name, cards), outformat = outformat,
-                                       return_str = True, card_feat = 'commander-combos')
-                html += '      </table>'+'\n'
-                html += '    </details>'+'\n'
+                if key in c_combos_rank_1_x_cards and c_combos_rank_1_x_cards[key]['combos']:
+
+                    html += '    <details>'+'\n'
+                    html += '      <summary>'
+                    html += ('Rank 1 combos with '+key+' cards: '
+                            +str(len(c_combos_rank_1_x_cards[key]['combos']))+' combos,'
+                            +'+'+str(len(c_combos_rank_1_x_cards[key]['cards names']))+' cards')
+                    html += '</summary>'+'\n'
+                    html += '      <h5>Combos</h5>'+'\n'
+                    html += '      <table class="combos-list">'+'\n'
+                    for index, tup_combo in enumerate(c_combos_rank_1_x_cards[key]['combos'].items()):
+                        html += print_tup_combo(tup_combo, cards, max_cards = count,
+                                                print_header = index == 0, outformat = outformat,
+                                                return_str = True)
+                    html += '      </table>'+'\n'
+                    html += '      <h5>Cards</h5>'+'\n'
+                    html += '      <table class="cards-list">'+'\n'
+                    for name in sorted(c_combos_rank_1_x_cards[key]['cards names']):
+                        html += print_card(get_card(name, cards), outformat = outformat,
+                                        return_str = True, card_feat = 'commander-combos')
+                    html += '      </table>'+'\n'
+                    html += '    </details>'+'\n'
 
         if c_combos_rank_2_x_cards:
             html += '    <h4 id="commander-combos-rank-2">'
@@ -6207,26 +6234,28 @@ def assist_commander_combos(commander_combos_no_filter, commander_combos, comman
             for count in range(2, 5):
                 key = '4+' if count == 4 else str(count)
 
-                html += '    <details>'+'\n'
-                html += '      <summary>'
-                html += ('Rank 2 combos with '+key+' cards: '
-                         +str(len(c_combos_rank_2_x_cards[key]['combos']))+' combos,'
-                         +'+'+str(len(c_combos_rank_2_x_cards[key]['cards names']))+' cards')
-                html += '</summary>'+'\n'
-                html += '      <h5>Combos</h5>'+'\n'
-                html += '      <table class="combos-list">'+'\n'
-                for index, tup_combo in enumerate(c_combos_rank_2_x_cards[key]['combos'].items()):
-                    html += print_tup_combo(tup_combo, cards, max_cards = count,
-                                            print_header = index == 0, outformat = outformat,
-                                            return_str = True)
-                html += '      </table>'+'\n'
-                html += '      <h5>Cards</h5>'+'\n'
-                html += '      <table class="cards-list">'+'\n'
-                for name in sorted(c_combos_rank_2_x_cards[key]['cards names']):
-                    html += print_card(get_card(name, cards), outformat = outformat,
-                                       return_str = True, card_feat = 'commander-combos')
-                html += '      </table>'+'\n'
-                html += '    </details>'+'\n'
+                if key in c_combos_rank_2_x_cards and c_combos_rank_2_x_cards[key]['combos']:
+
+                    html += '    <details>'+'\n'
+                    html += '      <summary>'
+                    html += ('Rank 2 combos with '+key+' cards: '
+                            +str(len(c_combos_rank_2_x_cards[key]['combos']))+' combos,'
+                            +'+'+str(len(c_combos_rank_2_x_cards[key]['cards names']))+' cards')
+                    html += '</summary>'+'\n'
+                    html += '      <h5>Combos</h5>'+'\n'
+                    html += '      <table class="combos-list">'+'\n'
+                    for index, tup_combo in enumerate(c_combos_rank_2_x_cards[key]['combos'].items()):
+                        html += print_tup_combo(tup_combo, cards, max_cards = count,
+                                                print_header = index == 0, outformat = outformat,
+                                                return_str = True)
+                    html += '      </table>'+'\n'
+                    html += '      <h5>Cards</h5>'+'\n'
+                    html += '      <table class="cards-list">'+'\n'
+                    for name in sorted(c_combos_rank_2_x_cards[key]['cards names']):
+                        html += print_card(get_card(name, cards), outformat = outformat,
+                                        return_str = True, card_feat = 'commander-combos')
+                    html += '      </table>'+'\n'
+                    html += '    </details>'+'\n'
 
             if rank_2_combos_missing_one_card:
                 html += '    <details>'+'\n'
@@ -6541,7 +6570,7 @@ def print_input_deck_info(cards, cards_names_not_found, cards_not_playable, outf
 
     if outformat == 'console':
         print('')
-        print('Input deck info')
+        print('### Input deck info ###')
         print('')
         if cards_names_not_found:
             print('   Cards not found')
