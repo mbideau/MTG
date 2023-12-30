@@ -1930,8 +1930,9 @@ def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None
                 html += '      <details>'+'\n'
                 html += '        <summary>'+title+'</summary>'+'\n'
                 html += print_cards_list(tup[1], limit = max_list_items, print_mana = False,
-                                        print_type = False, print_powr_tough = False,
-                                        outformat = outformat, return_str = True)
+                                         print_type = False, print_powr_tough = False,
+                                         outformat = outformat, return_str = True,
+                                         card_feat = 'lands')
                 html += '      </details>'+'\n'
                 html += '    </article>'+'\n'
 
@@ -1969,12 +1970,13 @@ def assist_land_fetch(cards, land_types_invalid_regex, max_list_items = None, ou
     cards_land_fetch = []
     cards_land_fetch_channel = []
     cards_land_fetch_land_cycling = []
+    named_basic_land_regex = ('('+('|'.join(BASIC_LAND_NAMES))+')').lower()
 
     for card in cards:
         card_oracle_texts = list(get_oracle_texts(card))
         card_oracle_texts_low = list(map(str.lower, card_oracle_texts))
         if not list(search_strings(land_types_invalid_regex, card_oracle_texts_low)):
-            if card['name'] not in ["Strata Scythe", "Trench Gorger"]:
+            if card['name'] not in ["Strata Scythe", "Trench Gorger", "Hired Giant"]:
                 if list(search_strings(LAND_CYCLING_REGEX, card_oracle_texts_low)):
                     cards_land_fetch_land_cycling.append(card['name'])
                     cards_land_fetch.append(card)
@@ -1987,36 +1989,62 @@ def assist_land_fetch(cards, land_types_invalid_regex, max_list_items = None, ou
                         cards_land_fetch_channel.append(card['name'])
                     cards_land_fetch.append(card)
 
-    cards_land_fetch_by_feature = {
-        'to battlefield': [],
-        'to battlefield, conditional': [],
-        'to hand': [],
-        'to hand, conditional': [],
-        'to top of library': [],
-        'to top of library, conditional': []}
+    cards_land_fetch_by_feature = {}
     for card in cards_land_fetch:
         card_oracle_texts = list(get_oracle_texts(card))
         card_oracle_texts_low = list(map(str.lower, card_oracle_texts))
         conditional = (bool(list(in_strings('more lands', card_oracle_texts_low)))
                        or bool(list(in_strings('fewer lands', card_oracle_texts_low))))
         cond_text = ', conditional' if conditional else ''
+        land_type_text = ', any land'
+        if list(search_strings('basic land', card_oracle_texts_low)):
+            land_type_text = ', basic land'
+        elif list(search_strings(named_basic_land_regex, card_oracle_texts_low)):
+            land_type_text = ', named basic land'
+        if list(search_strings('snow land', card_oracle_texts_low)):
+            land_type_text = ', snow land'
+        add_card = False
+        feature = None
         if list(search_strings(
                 r'puts? '
                 '(it|that card|one( of them)?|them|those cards|a card [^.]+|[^.]+ and the rest) '
                 'in(to)? (your|their) hand', card_oracle_texts_low)):
-            cards_land_fetch_by_feature['to hand'+cond_text].append(card)
+            feature = 'to hand'+land_type_text+cond_text
+            add_card = True
         elif list(search_strings(
                 r'puts? (it|that card|one( of them| of those cards)?|them|(those|both) cards) '
                 'on(to)? the battlefield', card_oracle_texts_low)):
-            cards_land_fetch_by_feature['to battlefield'+cond_text].append(card)
+            tapped_text = ', untapped'
+            if list(search_strings('battlefield tapped', card_oracle_texts_low)):
+                tapped_text = ', tapped'
+            feature = 'to battlefield'+land_type_text+cond_text+tapped_text
+            add_card = True
         elif list(search_strings('put (that card|them) on top', card_oracle_texts_low)):
-            cards_land_fetch_by_feature['to top of library'+cond_text].append(card)
+            feature = 'to top of library'+land_type_text+cond_text
+            add_card = True
         else:
-            print('UNKNOWN land fetch categorie',
-                  print_card(card, return_str = True, trunc_text = False, outformat = 'console'),
-                  file=sys.stderr)
+            feature = 'unknown'+land_type_text+cond_text
+        if add_card:
+            if feature not in cards_land_fetch_by_feature:
+                cards_land_fetch_by_feature[feature] = []
+            cards_land_fetch_by_feature[feature].append(card)
 
-    for feature, cards_list in cards_land_fetch_by_feature.items():
+    features = []
+
+    for feat_text in ['to battlefield', 'to hand', 'to top of library', 'unknown']:
+        for land_type_text in [', any land', ', basic land', ', named basic land', ', snow land']:
+            for cond_text in ['', ', conditional']:
+                tapped_text_list = ['']
+                if feat_text == 'to battlefield':
+                    tapped_text_list = [', untapped', ', tapped']
+                for tapped_text in tapped_text_list:
+                    feature = feat_text+land_type_text+cond_text+tapped_text
+                    if (feature in cards_land_fetch_by_feature
+                            and cards_land_fetch_by_feature[feature]):
+                        features.append(feature)
+
+    for feature in features:
+        cards_list = cards_land_fetch_by_feature[feature]
         organized = {}
         if cards_list:
             for card in cards_list:
@@ -2047,7 +2075,8 @@ def assist_land_fetch(cards, land_types_invalid_regex, max_list_items = None, ou
         html += '    <dl>'+'\n'
         html += '      <dt>Land fetchers (total)</dt>'+'\n'
         html += '      <dd>'+str(len(cards_land_fetch))+'</dd>'+'\n'
-        for feature, organized in cards_land_fetch_by_feature.items():
+        for feature in features:
+            organized = cards_land_fetch_by_feature[feature]
             for card_type, cards_list in organized.items():  # pylint: disable=no-member
                 extra_text = '(Ramp cards) ' if feature.startswith('to battlefield') else ''
                 title = extra_text+'Land fetchers ('+feature+') '+card_type
@@ -2055,7 +2084,8 @@ def assist_land_fetch(cards, land_types_invalid_regex, max_list_items = None, ou
                 html += '      <dd>'+str(len(cards_list))+'</dd>'+'\n'
         html += '    </dl>'+'\n'
         html += '    <h4>Land fetchers by feature</h4>'+'\n'
-        for feature, organized in cards_land_fetch_by_feature.items():
+        for feature in features:
+            organized = cards_land_fetch_by_feature[feature]
             html += '      <h5>Land fetchers ('+feature+') by card type</h5>'+'\n'
             for card_type, cards_list in organized.items():  # pylint: disable=no-member
                 extra_text = '(Ramp cards) ' if feature.startswith('to battlefield') else ''
@@ -2063,9 +2093,10 @@ def assist_land_fetch(cards, land_types_invalid_regex, max_list_items = None, ou
                 html += '    <article>'+'\n'
                 html += '      <details>'+'\n'
                 html += '        <summary>'+title+'</summary>'+'\n'
+                print_powr_tough = card_type in ['creature', 'land cycling', 'channel']
                 html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
-                                         print_powr_tough = (card_type == 'creature'),
-                                         print_type = (feature not in ['land cycling', 'channel']),
+                                         print_powr_tough = print_powr_tough,
+                                         print_type = (card_type in ['land cycling', 'channel']),
                                          limit = max_list_items,
                                          print_mana = (card_type not in ['land', 'stickers']),
                                          outformat = outformat, return_str = True,
@@ -2078,7 +2109,8 @@ def assist_land_fetch(cards, land_types_invalid_regex, max_list_items = None, ou
     if outformat == 'console':
         print('Land fetch (total):', len(cards_land_fetch))
         print('')
-        for feature, organized in cards_land_fetch_by_feature.items():
+        for feature in features:
+            organized = cards_land_fetch_by_feature[feature]
             for card_type, cards_list in organized.items():  # pylint: disable=no-member
                 extra_text = '(Ramp cards) ' if feature.startswith('to battlefield') else ''
                 title = extra_text+'Land fetch ('+card_type+')'+': '+str(len(cards_list))
@@ -2087,9 +2119,10 @@ def assist_land_fetch(cards, land_types_invalid_regex, max_list_items = None, ou
                 if ', conditional' in feature:
                     print('')
                     continue
+                print_powr_tough = card_type in ['creature', 'land cycling', 'channel']
                 print_cards_list(sort_cards_by_cmc_and_name(cards_list),
-                                 print_powr_tough = (card_type == 'creature'),
-                                 print_type = (feature not in ['land cycling', 'channel']),
+                                 print_powr_tough = print_powr_tough,
+                                 print_type = (card_type in ['land cycling', 'channel']),
                                  indent = 6, limit = max_list_items,
                                  print_mana = (card_type not in ['land', 'stickers']),
                                  outformat = outformat)
