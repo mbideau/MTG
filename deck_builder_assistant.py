@@ -635,6 +635,8 @@ LAND_BICOLORS_EXCLUDE_REGEX = r'('+('|'.join([
     'depletion',
     'two or (more|fewer) other lands',
     'basic lands']))+')'
+ALPHA_BILANDS = ['Taiga', 'Toundra', 'Underground Sea', 'Badlands', 'Savannah', 'Scrubland',
+                 'Volcanic Island', 'Bayou', 'Plateau', 'Tropical Island']
 LAND_SACRIFICE_SEARCH_REGEX = r'sacrifice.*search.*land'
 RAMP_CARDS_REGEX_BY_FEATURES = {
     'land fetch': [
@@ -1366,6 +1368,11 @@ def filter_stickers(item):
     """Remove cards that are Stickers"""
     return 'type_line' not in item or item['type_line'] != 'Stickers'
 
+def filter_alpha_bilands(item):
+    """Remove bilands from alpha set"""
+    #return 'set' not in item or item['set'].upper() not in ['LEA', 'LEB'] or not filter_lands(item)
+    return 'name' not in item or item['name'] not in ALPHA_BILANDS
+
 def filter_rules0(item, preset):
     """Remove card if it doesn't pass all filters"""
 
@@ -1383,6 +1390,10 @@ def filter_rules0(item, preset):
 
     # no stickers or tickets
     if 'no-stickers' in preset and not filter_stickers(item):
+        return False
+
+    # no alpha set bilands
+    if 'no-alpha-bilands' in preset and not filter_alpha_bilands(item):
         return False
 
     # default
@@ -6734,8 +6745,10 @@ def main():
                         help='output to this file (default to stdout)')
     parser.add_argument('-d', '--outdir', default='/tmp',
                         help='output to this directory (default to /tmp)')
-    parser.add_argument('-0', '--rules0', default='no-expensive with-xmage-banned no-stickers',
-                        help="rules 0 preset (default to 'no-expensive with-xmage-banned no-stickers')")
+    parser.add_argument('-0', '--rules0',
+                        default='no-expensive with-xmage-banned no-stickers no-alpha-bilands',
+                        help="rules 0 preset (default to "
+                             "'no-expensive with-xmage-banned no-stickers no-alpha-bilands')")
     parser.add_argument('--list-rules0-preset', action='store_true', help="list rules 0 preset")
     parser.add_argument('-x', '--exclude', nargs='*', default=['set:LTR', 'set:SWS'],
                         help="exclude Sets or Cards (default to: 'set:LTR|set:SWS')")
@@ -6751,10 +6764,11 @@ def main():
     if args.list_rules0_preset:
         print('')
         print("Use any combination of the following filter (separated by space ' '):")
-        for preset in ['no-expensive', 'no-mythic', 'no-stickers', 'with-xmage-banned']:
+        for preset in ['no-expensive', 'no-mythic', 'no-stickers', 'with-xmage-banned',
+                       'no-alpha-bilands']:
             print('  ', preset)
         print('')
-        print("Default is: 'no-expensive with-xmage-banned no-stickers'")
+        print("Default is: 'no-expensive with-xmage-banned no-stickers no-alpha-bilands'")
         print('')
         sys.exit(0)
 
