@@ -105,7 +105,17 @@ COMMANDER_FEATURES_REGEXES = {
             IFWHEN_REGEXP+' '+PLAYER_REGEXP+' (gets? a poison counter|is poisoned)',
             '(^|\n|[,.] )corrupted']},
     'counters': {
-        '((add|put) [^.]+ counter)' : [IFWHEN_REGEXP+' [^.]+ counter']},
+        '((add|put|double) [^.]+ counter)' : [
+            (IFWHEN_REGEXP+' [^.]+ counter', [
+                "whenever <name> (attacks|(attacks or )?blocks), put a -[0-9]?[0-9x]/-[0-9]?[0-9x] counter on it",
+                "whenever <name> (attacks|(attacks or )?blocks), remove a +[0-9]?[0-9x]/+[0-9]?[0-9x] counter from it",
+                "counter (it([,.]| (unless|if))|that|this|target|all|each|every|those)",
+                "whenever you cast a spell that targets <name>, put an? [^.]+ counter on <name>",
+                "whenever another (human|vampire|goblin) enters the battlefield under your control, put an? [^.]+ counter on <name>",
+                ]),
+            'for each (creature|artifact|permanent|nonland)( you control)? with a [^.]+ counter( on it)?',
+            'enters the battlefield with x [^.]+ counters on it',
+            '(add|put|double) [^.]+ counter on each']},
     'tokens': {
         '(create [^.]*token)': [IFWHEN_REGEXP+' [^.]+ create [^.]*token']},
     'pay with life': {
@@ -143,6 +153,8 @@ COMMANDER_FEATURES_REGEXES = {
         'proliferate': ['proliferate']},
     'populate': {
         'populate': ['populate']},
+    'modified': {
+        'modified': ['modified', '((low|great)er than|different from) its base']}
     # TODO add ETB (Enter The Battlefield), LTB (Leave The Battlefield)
 }
 # list of associated features
@@ -168,7 +180,8 @@ FEATURE_MAP = {
         'feat:populate',
         'feat:proliferate'],
     'feat:counters': [
-        'feat:proliferate']}
+        'feat:proliferate',
+        'feat:modified']}
 
 # Add a parameter to express if a 1-drop at turn 1 is important,
 # that will exclude land that are not usable at turn 1 or colorless at turn 1
@@ -185,24 +198,7 @@ TERM_COLS, TERM_LINES = os.getenv('TERM_COLS', None), os.getenv('TERM_LINES', No
 SCRYFALL_API_BULK_URL = 'https://api.scryfall.com/bulk-data'
 LAST_SCRYFALL_CALL_TS_N = 0
 
-# see https://github.com/SpaceCowMedia/commander-spellbook-site/blob/main/scripts/download-data/get-google-sheets-data.ts
-# see https://github.com/SpaceCowMedia/commander-spellbook-site/blob/main/scripts/download-data/get-combo-changelog.ts
-# see https://github.com/SpaceCowMedia/commander-spellbook-site/blob/main/scripts/download-data/get-edhrec-combo-data.ts
-# see https://github.com/SpaceCowMedia/commander-spellbook-site/blob/main/scripts/download-data/get-backend-data.ts
-COMMANDERSPELLBOOK_COMBOS_SHEET_DB_URL = 'https://sheets.googleapis.com/v4/spreadsheets/1KqyDRZRCgy8YgMFnY0tHSw_3jC99Z0zFvJrPbfm66vA/values:batchGet?ranges=combos!A2:Q&key=AIzaSyBD_rcme5Ff37Evxa4eW5BFQZkmTbgpHew'
-COMMANDERSPELLBOOK_COMBOS_DB_URL = 'https://commanderspellbook.com/api/combo-data.json'
-COMMANDERSPELLBOOK_VARIANTS_DB_URL = 'https://spellbook-prod.s3.us-east-2.amazonaws.com/variants.json'
-COMMANDERSPELLBOOK_VARIANTS_IDMAP_URL = 'https://spellbook-prod.s3.us-east-2.amazonaws.com/variant_id_map.json'
-COMMANDERSPELLBOOK_PROPERTIES = {
-  'c': 'Cards',
-  'i': 'Color Identity',
-  'p': 'Prerequisites',
-  's': 'Steps',
-  'r': 'Results',
-  # adds
-  'd': 'Identifier',
-  't': 'Other Prerequisites',
-}
+COMMANDERSPELLBOOK_COMBOS_API_URL = 'https://backend.commanderspellbook.com/variants/?format=json'
 
 XMAGE_COMMANDER_BANNED_LIST_URL = 'https://github.com/magefree/mage/raw/master/Mage.Server.Plugins/Mage.Deck.Constructed/src/mage/deck/Commander.java'
 XMAGE_DUELCOMMANDER_BANNED_LIST_URL = 'https://github.com/magefree/mage/raw/master/Mage.Server.Plugins/Mage.Deck.Constructed/src/mage/deck/DuelCommander.java'
@@ -323,6 +319,7 @@ REMOVAL_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
     r"exile all creature cards (with mana value \d or less )?from (target player's|all) graveyard",
     "if a permanent would be put into a graveyard, exile it instead",
     'whenever another card is put into a graveyard from anywhere, exile that card',
+    'exile those tokens at end of combat',
 ]))+')'
 DISABLING_CARDS_REGEX = [
     r"(activated abilities can't be activated|activated abilities of [^.]+ can't be activated)",
@@ -407,6 +404,8 @@ PREVENTDAMAGE_CARDS_REGEX = {
     'by target creature': [
         (r"prevent all( combat)? damage that would be (dealt to( you| creatures( you control)?)?"
          r"( and dealt by)|dealt by) that creature( this turn)?\.")],
+    'by target spell': [
+        (r"prevent all( combat)? damage target instant or sorcery spell would deal( this turn)?")],
 }
 PREVENTDAMAGE_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
     'toto',
@@ -590,6 +589,7 @@ GRAVEYARD_RECURSION_CARDS_REGEX = [
     "if the top card of target player's graveyard is a creature card, put that card on top of "
     "that player's library",
     "put target creature card from a graveyard onto the battlefield",
+    "return target nonland permanent card with mana value X or less from your graveyard to the battlefield"
 ]
 GRAVEYARD_RECURSION_CARDS_EXCLUDE_REGEX = r'('+('|'.join([
     "exile target attacking creature",
@@ -1230,20 +1230,84 @@ def get_commanderspellbook_combos(outdir = '/tmp', update = False):
        update       bool    If 'True' force updating the image on local store
     """
 
+
     date_text = datetime.utcnow().strftime('%Y-%W')
     combos_json_file_name = 'commanderspellbook-combos-'+date_text+'.json'
     combos_json_file_path = pjoin(outdir, combos_json_file_name)
     combos_json_file_ref = Path(combos_json_file_path)
 
     if not combos_json_file_ref.is_file() or update:
-        print("DEBUG Getting CommanderSpellbook combos JSON database from '"
-              +COMMANDERSPELLBOOK_COMBOS_DB_URL+"' ...", file=sys.stderr)
-        urlretrieve(COMMANDERSPELLBOOK_COMBOS_DB_URL, combos_json_file_path)
 
-    ## GoogleSheet is deprecated
-    # with open("Commander Spellbook Database - combos.tsv", "r", encoding="utf8") as s_file:
-    #     f_reader = csv.DictReader(s_file, dialect='excel-tab')
-    #     combos = list(f_reader)
+        # new API "backend"
+        print("DEBUG Building CommanderSpellbook combos JSON database from '"
+              +COMMANDERSPELLBOOK_COMBOS_API_URL+"' ...", file=sys.stderr)
+        combos = {}
+        total_expected = 0
+        current_count = 0
+        next_url = COMMANDERSPELLBOOK_COMBOS_API_URL
+        while next_url:
+            if not current_count or current_count < 501 or not current_count % 1000:
+                print("DEBUG   getting '"+next_url+"' (entries count: "+str(current_count)+") ...",
+                      file=sys.stderr)
+            with urlopen(next_url) as r_json:
+                data = json.load(r_json)
+
+                if not total_expected and 'count' in data:
+                    total_expected = data['count']
+
+                if 'next' not in data:
+                    next_url = None
+                else:
+                    next_url = data['next']
+
+                if 'results' not in data:
+                    print("ERROR: no 'results' key in data", file=sys.stderr)
+                    sys.exit(1)
+
+                for res in data['results']:
+                    current_count += 1
+
+                    new_combo = {}
+
+                    if 'id' not in res:
+                        print("ERROR: no 'id' key in data", file=sys.stderr)
+                        sys.exit(1)
+
+                    combo_id = res['id']
+                    new_combo['id'] = combo_id
+
+                    if 'status' not in res:
+                        print("ERROR: no 'status' key in data", file=sys.stderr)
+                        sys.exit(1)
+                    if res['status'] != 'OK':
+                        print("WARNING: skipping combo '"+combo_id+"' with status '"+
+                              res['status']+"'", file=sys.stderr)
+                        continue
+
+                    if 'produces' not in res:
+                        print("ERROR: no 'produces' key in data", file=sys.stderr)
+                        sys.exit(1)
+                    effects = '. '.join(list(map(lambda e: e['name'], res['produces'])))
+                    new_combo['r'] = effects
+
+                    if 'uses' not in res:
+                        print("ERROR: no 'uses' key in data", file=sys.stderr)
+                        sys.exit(1)
+                    cards_names = list(map(lambda u: u['card']['name'], res['uses']))
+                    new_combo['c'] = cards_names
+
+                    combos[combo_id] = new_combo
+
+                if next_url:
+                    sleep(0.25)  # sleep 250 millisec
+
+        if current_count != total_expected:
+            print("WARNING: got '"+str(current_count)+"' entries but expected '"+
+                  str(total_expected)+"'", file=sys.stderr)
+
+        with open(combos_json_file_path, 'w', encoding='utf-8') as f_write:
+            json.dump(combos, f_write)
+
     with open(combos_json_file_path, 'r', encoding='utf-8') as f_read:
         combos = json.load(f_read)
 
@@ -1749,6 +1813,13 @@ def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None
     cards_lands_bicolors_filtered_tapped = [
         c for c in cards_lands_bicolors_filtered
         if c not in cards_lands_bicolors_filtered_not_tapped]
+    cards_lands_bicolors_underoptimized = [
+        c for c in cards_lands_bicolors if c not in cards_lands_bicolors_filtered]
+    cards_lands_bicolors_underoptimized_not_tapped = list(filter(filter_tapped_or_untappable,
+        cards_lands_bicolors_underoptimized))
+    cards_lands_bicolors_underoptimized_tapped = [
+        c for c in cards_lands_bicolors_underoptimized
+        if c not in cards_lands_bicolors_underoptimized_not_tapped]
 
     # land fetcher
     cards_lands_sacrifice_search = list(
@@ -1763,6 +1834,8 @@ def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None
                     lands))))
     cards_lands_sacrifice_search_no_tapped = list(
         filter(filter_tapped_or_untappable, cards_lands_sacrifice_search))
+    cards_lands_sacrifice_search_tapped = [
+        c for c in cards_lands_sacrifice_search if c not in cards_lands_sacrifice_search_no_tapped]
 
     cards_lands_producers_non_basic = list(filter(
         lambda c: (bool(list(search_strings('gains?|loses?', get_oracle_texts(c))))
@@ -1873,9 +1946,15 @@ def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None
         'Bicolors lands (filtered, not tapped or untappable)':
             cards_lands_bicolors_filtered_not_tapped,
         'Bicolors lands (filtered, tapped)': cards_lands_bicolors_filtered_tapped,
+        'Bicolors lands (underoptimized)': cards_lands_bicolors_underoptimized,
+        'Bicolors lands (underoptimized, not tapped or untappable)':
+            cards_lands_bicolors_underoptimized_not_tapped,
+        'Bicolors lands (underoptimized, tapped)': cards_lands_bicolors_underoptimized_tapped,
         'Sacrifice/Search lands': cards_lands_sacrifice_search,
         'Sacrifice/Search lands (not tapped or untappable)':
             cards_lands_sacrifice_search_no_tapped,
+        'Sacrifice/Search lands (tapped)':
+            cards_lands_sacrifice_search_tapped,
         'Non-basic lands doing some effects (total)': cards_lands_producers_non_basic,
         'Non-basic lands doing some effects (no colorless)':
             cards_lands_producers_non_basic_no_colorless,
@@ -1905,12 +1984,22 @@ def assist_land_selection(lands, land_types_invalid_regex, max_list_items = None
              cards_lands_converters_colorless_producers_not_tapped),
             ('Lands converters colorless producers (tapped)',
              cards_lands_converters_colorless_producers_tapped)],
+        'Tricolors lands': [
+            ('Tricolors lands (tapped)', cards_lands_tricolors)],
         'Bicolors lands': [
             ('Bicolors lands (filtered, not tapped or untappable)',
-             cards_lands_bicolors_filtered_not_tapped)],
+             cards_lands_bicolors_filtered_not_tapped),
+            ('Bicolors lands (filtered, tapped)',
+             cards_lands_bicolors_filtered_tapped),
+            ('Bicolors lands (underoptimized, not tapped or untappable)',
+             cards_lands_bicolors_underoptimized_not_tapped),
+            ('Bicolors lands (underoptimized, tapped)',
+             cards_lands_bicolors_underoptimized_tapped)],
         'Sacrifice/Search lands': [
             ('Sacrifice/Search lands (not tapped or untappable)',
-             cards_lands_sacrifice_search_no_tapped)],
+             cards_lands_sacrifice_search_no_tapped),
+            ('Sacrifice/Search lands (tapped)',
+             cards_lands_sacrifice_search_tapped)],
         'Non-basic lands doing some effects': [
             ('Non-basic lands doing some effects (no colorless, not tapped)',
                 cards_lands_producers_non_basic_no_colorless_not_tapped),
@@ -2256,6 +2345,9 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
         if print_mana:
             mana = colorize_mana(' // '.join(get_mana_cost(card)), no_braces = True)
             html += '          <td class="mana">'+mana+'</td>'+'\n'
+        else:
+            mana = colorize_mana(' // '.join(get_mana_cost(card)), no_braces = True)
+            html += '          <td class="mana" style="display: none;">'+mana+'</td>'+'\n'
         if merge_type_powr_tough:
             if is_creature(card):
                 powr_tough = ' // '.join(get_powr_tough(card))
@@ -2272,6 +2364,9 @@ def print_card(card, indent = 0, print_mana = True, print_type = True, print_pow
             if print_type:
                 typel = truncate_text((' // '.join(get_type_lines(card))), trunc_type)
                 html += '          <td class="type">'+typel+'</td>'+'\n'
+            else:
+                typel = truncate_text((' // '.join(get_type_lines(card))), trunc_type)
+                html += '          <td class="type" style="display: none;">'+typel+'</td>'+'\n'
 
         name = card['name']
         # TODO display both faces
@@ -2536,10 +2631,9 @@ def assist_draw_cards(cards, land_types_invalid_regex, max_list_items = None, ou
                     break
     cards_draw = list(sorted(cards_draw, key=lambda c: c['cmc']))
 
-    cards_draw_not_repeating_cmc_3 = sort_cards_by_cmc_and_name(list(filter(
-        lambda c: int(c['cmc']) <= 3,
+    cards_draw_not_repeating = sort_cards_by_cmc_and_name(
         [c for c in cards_draw if c not in cards_draw_repeating
-         and c not in cards_draw_multiple])))
+         and c not in cards_draw_multiple])
 
     connives = list(filter(lambda c: bool(list(
         in_strings('connives', map(str.lower, get_oracle_texts(c))))), cards))
@@ -2548,7 +2642,7 @@ def assist_draw_cards(cards, land_types_invalid_regex, max_list_items = None, ou
         'repeating': organize_by_type(cards_draw_repeating),
         'multiple': organize_by_type(cards_draw_multiple),
         'connives': organize_by_type(connives),
-        'not repeating, CMC <= 3': organize_by_type(cards_draw_not_repeating_cmc_3)}
+        'not repeating': organize_by_type(cards_draw_not_repeating)}
 
     draw_stat_data = {
         'Draw cards (total)': len(cards_draw)}
@@ -2830,52 +2924,50 @@ def assist_removal_cards(cards, max_list_items = None, outformat = 'console'):
                     cards_removal.append(card)
                     break
 
-    cards_removal_cmc_3 = list(filter(lambda c: c['cmc'] <= 3, cards_removal))
-
-    cards_removal_cmc_3_return_to_hand = list(filter(
+    cards_removal_return_to_hand = list(filter(
         lambda c: bool(list(search_strings(r"returns? .* to (its|their) owner('s|s') hand",
                                            list(map(str.lower, get_oracle_texts(c)))))),
-        cards_removal_cmc_3))
+        cards_removal))
 
-    cards_removal_cmc_3_put_to_library_bottom = list(filter(
+    cards_removal_put_to_library_bottom = list(filter(
         lambda c: bool(list(search_strings(
             r"puts? .* on the bottom of (its|their) owner('s|s') library",
             list(map(str.lower, get_oracle_texts(c)))))),
-        cards_removal_cmc_3))
-    cards_removal_cmc_3_put_to_library_top = list(filter(
+        cards_removal))
+    cards_removal_put_to_library_top = list(filter(
         lambda c: bool(list(search_strings(r"puts? .* on top of (its|their) owner('s|s') library",
                                            list(map(str.lower, get_oracle_texts(c)))))),
-        cards_removal_cmc_3))
-    cards_removal_cmc_3_put_to_library_other = list(filter(
+        cards_removal))
+    cards_removal_put_to_library_other = list(filter(
         lambda c: bool(list(search_strings(
             r"(puts? .* into (its|their) owner('s|s') library|shuffles it into (its|their) library)",
             list(map(str.lower, get_oracle_texts(c)))))),
-        cards_removal_cmc_3))
+        cards_removal))
 
-    cards_removal_cmc_3_untargetted = list(filter(
+    cards_removal_untargetted = list(filter(
         lambda c: bool(list(search_strings(
             r"(target|each|every) (opponents?|players?) sacrifices? an?( attacking)? creature",
             list(map(str.lower, get_oracle_texts(c)))))),
-        cards_removal_cmc_3))
+        cards_removal))
 
-    cards_removal_cmc_3_creature_toughness_malus = list(filter(
+    cards_removal_creature_toughness_malus = list(filter(
         lambda c: bool(list(search_strings(
             r"creatures? gets? [+-][0-9Xx]+/-[1-9Xx]+",
             list(map(str.lower, get_oracle_texts(c)))))),
-        cards_removal_cmc_3))
+        cards_removal))
 
-    cards_removal_cmc_3_destroy_land = list(filter(lambda c: bool(list(
+    cards_removal_destroy_land = list(filter(lambda c: bool(list(
         search_strings('destroy target (nonbasic )?land', map(str.lower, get_oracle_texts(c))))),
-        cards_removal_cmc_3))
-    cards_removal_cmc_3_not_destroy_land = [
-        c for c in cards_removal_cmc_3 if c not in cards_removal_cmc_3_destroy_land]
+        cards_removal))
+    cards_removal_not_destroy_land = [
+        c for c in cards_removal if c not in cards_removal_destroy_land]
 
     # group by target type
-    cards_removal_cmc_3_destroy_permanent = list(filter(lambda c: bool(list(
+    cards_removal_destroy_permanent = list(filter(lambda c: bool(list(
         search_strings(r'(destroy|exile) target (\w+ )?permanent',
                        map(str.lower, get_oracle_texts(c))))),
-        cards_removal_cmc_3_not_destroy_land))
-    cards_removal_cmc_3_destroy_three = list(filter(lambda c: bool(list(
+        cards_removal_not_destroy_land))
+    cards_removal_destroy_three = list(filter(lambda c: bool(list(
         search_strings(r'(destroy|exile) target (\w+ )?('
                        + 'creature.* enchantment.* artifact'
                        +'|creature.* artifact.* enchantment'
@@ -2884,8 +2976,8 @@ def assist_removal_cards(cards, max_list_items = None, outformat = 'console'):
                        +'|artifact.* enchantment.* creature'
                        +'|artifact.* creature.* enchantment)',
                        map(str.lower, get_oracle_texts(c))))),
-        cards_removal_cmc_3_not_destroy_land))
-    cards_removal_cmc_3_destroy_two = list(filter(lambda c: bool(list(
+        cards_removal_not_destroy_land))
+    cards_removal_destroy_two = list(filter(lambda c: bool(list(
         search_strings(r'(destroy|exile) target (\w+ )?('
                        + 'creature.* enchantment'
                        +'|creature.* artifact'
@@ -2894,91 +2986,91 @@ def assist_removal_cards(cards, max_list_items = None, outformat = 'console'):
                        +'|artifact.* enchantment'
                        +'|artifact.* creature)',
                        map(str.lower, get_oracle_texts(c))))),
-        [c for c in cards_removal_cmc_3_not_destroy_land
-         if c not in cards_removal_cmc_3_destroy_three]))
-    cards_removal_cmc_3_destroy_creature = list(filter(lambda c: bool(list(
+        [c for c in cards_removal_not_destroy_land
+         if c not in cards_removal_destroy_three]))
+    cards_removal_destroy_creature = list(filter(lambda c: bool(list(
         search_strings(r'(destroy|exile) target (\w+ )?creature',
                        map(str.lower, get_oracle_texts(c))))),
-        cards_removal_cmc_3_not_destroy_land))
-    cards_removal_cmc_3_destroy_creature_no_sacrifice = list(filter(lambda c: bool(list(
+        cards_removal_not_destroy_land))
+    cards_removal_destroy_creature_no_sacrifice = list(filter(lambda c: bool(list(
         not_in_strings_exclude('as an additional cost to cast this spell, sacrifice a creature',
                                'sacrifice a creature or discard',
                                map(str.lower, get_oracle_texts(c))))),
-        cards_removal_cmc_3_destroy_creature))
-    cards_removal_cmc_3_destroy_creature_no_exclusion = list(filter(lambda c: bool(list(
+        cards_removal_destroy_creature))
+    cards_removal_destroy_creature_no_exclusion = list(filter(lambda c: bool(list(
         search_strings(r'([Dd]estroy|[Ee]xile) target creature( or \w+)?( an opponent controls)?\.',
                        get_oracle_texts(c)))),
-        cards_removal_cmc_3_destroy_creature_no_sacrifice))
-    cards_removal_cmc_3_destroy_creature_exclusion = [
-        c for c in cards_removal_cmc_3_destroy_creature
-        if c not in cards_removal_cmc_3_destroy_creature_no_exclusion]
-    cards_removal_cmc_3_destroy_enchantment = list(filter(lambda c: bool(list(
+        cards_removal_destroy_creature_no_sacrifice))
+    cards_removal_destroy_creature_exclusion = [
+        c for c in cards_removal_destroy_creature
+        if c not in cards_removal_destroy_creature_no_exclusion]
+    cards_removal_destroy_enchantment = list(filter(lambda c: bool(list(
         search_strings(r'(destroy|exile) target (\w+ )?enchantment',
                        map(str.lower, get_oracle_texts(c))))),
-        cards_removal_cmc_3_not_destroy_land))
-    cards_removal_cmc_3_destroy_other = [
-        c for c in cards_removal_cmc_3_not_destroy_land
-        if c not in cards_removal_cmc_3_destroy_permanent
-        and c not in cards_removal_cmc_3_destroy_three
-        and c not in cards_removal_cmc_3_destroy_two
-        and c not in cards_removal_cmc_3_destroy_creature
-        and c not in cards_removal_cmc_3_destroy_enchantment]
+        cards_removal_not_destroy_land))
+    cards_removal_destroy_other = [
+        c for c in cards_removal_not_destroy_land
+        if c not in cards_removal_destroy_permanent
+        and c not in cards_removal_destroy_three
+        and c not in cards_removal_destroy_two
+        and c not in cards_removal_destroy_creature
+        and c not in cards_removal_destroy_enchantment]
 
     removal_stats_data = {
         'Removal cards': len(cards_removal),
-        'Removal cards (CMC <= 3, not destroy land)': len(cards_removal_cmc_3_not_destroy_land),
-        'Removal cards (CMC <= 3, destroy permanent)': len(cards_removal_cmc_3_destroy_permanent),
-        'Removal cards (CMC <= 3, destroy three choices)': len(cards_removal_cmc_3_destroy_three),
-        'Removal cards (CMC <= 3, destroy two choices)': len(cards_removal_cmc_3_destroy_two),
-        'Removal cards (CMC <= 3, destroy creature, sacrifice one)':
-            len(cards_removal_cmc_3_destroy_creature)
-            - len(cards_removal_cmc_3_destroy_creature_no_sacrifice),
-        'Removal cards (CMC <= 3, destroy creature, no exclusion)':
-            len(cards_removal_cmc_3_destroy_creature_no_exclusion),
-        'Removal cards (CMC <= 3, destroy creature, exclusion)':
-            len(cards_removal_cmc_3_destroy_creature_exclusion),
-        'Removal cards (CMC <= 3, destroy enchantments)':
-            len(cards_removal_cmc_3_destroy_enchantment),
-        'Removal cards (CMC <= 3, destroy other)': len(cards_removal_cmc_3_destroy_other),
-        'Removal cards (CMC <= 3, destroy untargetted)': len(cards_removal_cmc_3_untargetted),
-        'Removal cards (CMC <= 3, return to hand)': len(cards_removal_cmc_3_return_to_hand),
-        'Removal cards (CMC <= 3, put to library, bottom)':
-            len(cards_removal_cmc_3_put_to_library_bottom),
-        'Removal cards (CMC <= 3, put to library, top)':
-            len(cards_removal_cmc_3_put_to_library_top),
-        'Removal cards (CMC <= 3, put to library, other)':
-            len(cards_removal_cmc_3_put_to_library_other),
-        'Removal cards (CMC <= 3, creature, toughness malus)':
-            len(cards_removal_cmc_3_creature_toughness_malus),
+        'Removal cards (not destroy land)': len(cards_removal_not_destroy_land),
+        'Removal cards (destroy permanent)': len(cards_removal_destroy_permanent),
+        'Removal cards (destroy three choices)': len(cards_removal_destroy_three),
+        'Removal cards (destroy two choices)': len(cards_removal_destroy_two),
+        'Removal cards (destroy creature, sacrifice one)':
+            len(cards_removal_destroy_creature)
+            - len(cards_removal_destroy_creature_no_sacrifice),
+        'Removal cards (destroy creature, no exclusion)':
+            len(cards_removal_destroy_creature_no_exclusion),
+        'Removal cards (destroy creature, exclusion)':
+            len(cards_removal_destroy_creature_exclusion),
+        'Removal cards (destroy enchantments)':
+            len(cards_removal_destroy_enchantment),
+        'Removal cards (destroy other)': len(cards_removal_destroy_other),
+        'Removal cards (destroy untargetted)': len(cards_removal_untargetted),
+        'Removal cards (return to hand)': len(cards_removal_return_to_hand),
+        'Removal cards (put to library, bottom)':
+            len(cards_removal_put_to_library_bottom),
+        'Removal cards (put to library, top)':
+            len(cards_removal_put_to_library_top),
+        'Removal cards (put to library, other)':
+            len(cards_removal_put_to_library_other),
+        'Removal cards (creature, toughness malus)':
+            len(cards_removal_creature_toughness_malus),
         }
 
     removal_output_data = {
-        'Removal cards (CMC <= 3) choice in target': {
-            'Removal cards (CMC <= 3, destroy permanent)': cards_removal_cmc_3_destroy_permanent,
-            'Removal cards (CMC <= 3, destroy three choices)': cards_removal_cmc_3_destroy_three,
-            'Removal cards (CMC <= 3, destroy two choices)': cards_removal_cmc_3_destroy_two},
-        'Removal cards (CMC <= 3) specific target': {
-            'Removal cards (CMC <= 3, destroy creature, no exclusion)':
-                cards_removal_cmc_3_destroy_creature_no_exclusion,
-            'Removal cards (CMC <= 3, destroy creature, exclusion)':
-                cards_removal_cmc_3_destroy_creature_exclusion,
-            'Removal cards (CMC <= 3, destroy enchantments)':
-                cards_removal_cmc_3_destroy_enchantment,
-            'Removal cards (CMC <= 3, destroy other)': cards_removal_cmc_3_destroy_other},
-        'Removal cards (CMC <= 3, untargetted)': {
-            'Removal cards (CMC <= 3, untargetted)': cards_removal_cmc_3_untargetted},
-        'Removal cards (CMC <= 3, return to hand)': {
-            'Removal cards (CMC <= 3, return to hand)': cards_removal_cmc_3_return_to_hand},
-        'Removal cards (CMC <= 3, put to library)': {
-            'Removal cards (CMC <= 3, put to library, bottom)':
-                cards_removal_cmc_3_put_to_library_bottom,
-            'Removal cards (CMC <= 3, put to library, top)':
-                cards_removal_cmc_3_put_to_library_top,
-            'Removal cards (CMC <= 3, put to library, other)':
-                cards_removal_cmc_3_put_to_library_other},
-        'Removal cards (CMC <= 3, creature affection)': {
-            'Removal cards (CMC <= 3, creature, toughness malus)':
-                cards_removal_cmc_3_creature_toughness_malus}}
+        'Removal cards choice in target': {
+            'Removal cards (destroy permanent)': cards_removal_destroy_permanent,
+            'Removal cards (destroy three choices)': cards_removal_destroy_three,
+            'Removal cards (destroy two choices)': cards_removal_destroy_two},
+        'Removal cards specific target': {
+            'Removal cards (destroy creature, no exclusion)':
+                cards_removal_destroy_creature_no_exclusion,
+            'Removal cards (destroy creature, exclusion)':
+                cards_removal_destroy_creature_exclusion,
+            'Removal cards (destroy enchantments)':
+                cards_removal_destroy_enchantment,
+            'Removal cards (destroy other)': cards_removal_destroy_other},
+        'Removal cards (untargetted)': {
+            'Removal cards (untargetted)': cards_removal_untargetted},
+        'Removal cards (return to hand)': {
+            'Removal cards (return to hand)': cards_removal_return_to_hand},
+        'Removal cards (put to library)': {
+            'Removal cards (put to library, bottom)':
+                cards_removal_put_to_library_bottom,
+            'Removal cards (put to library, top)':
+                cards_removal_put_to_library_top,
+            'Removal cards (put to library, other)':
+                cards_removal_put_to_library_other},
+        'Removal cards (creature affection)': {
+            'Removal cards (creature, toughness malus)':
+                cards_removal_creature_toughness_malus}}
 
     cards_removal_selected = []
     for data in removal_output_data.values():
@@ -3055,59 +3147,57 @@ def assist_disabling_cards(cards, max_list_items = None, outformat = 'console'):
                     cards_disabling.append(card)
                     break
 
-    cards_disabling_cmc_3 = list(filter(lambda c: c['cmc'] <= 3, cards_disabling))
-
-    cards_disabling_cmc_3_creature_no_abilities = list(filter(
+    cards_disabling_creature_no_abilities = list(filter(
         lambda c: bool(list(search_strings(
             r"(activated abilities can't be activated|activated abilities of [^.]+ can't be activated)",
             list(map(str.lower, get_oracle_texts(c)))))),
-        cards_disabling_cmc_3))
+        cards_disabling))
 
-    cards_disabling_cmc_3_creature_cant_attack_or_block = list(filter(
+    cards_disabling_creature_cant_attack_or_block = list(filter(
         lambda c: bool(list(search_strings(
             r"creature can't (block|attack( or block)?)",
             list(map(str.lower, get_oracle_texts(c)))))),
-        cards_disabling_cmc_3))
+        cards_disabling))
 
-    cards_disabling_cmc_3_creature_tap = list(filter(
+    cards_disabling_creature_tap = list(filter(
         lambda c: bool(list(search_strings(
             r"(creature doesn't untap|if enchanted creature is untapped, tap it)",
             list(map(str.lower, get_oracle_texts(c)))))),
-        cards_disabling_cmc_3))
+        cards_disabling))
 
-    cards_disabling_cmc_3_creature_phaseout = list(filter(
+    cards_disabling_creature_phaseout = list(filter(
         lambda c: bool(list(search_strings(
             r"creature phases out",
             list(map(str.lower, get_oracle_texts(c)))))),
-        cards_disabling_cmc_3))
+        cards_disabling))
 
-    cards_disabling_cmc_3_creature_mutate = list(filter(
+    cards_disabling_creature_mutate = list(filter(
         lambda c: bool(list(search_strings(
             r"(base power and toughness \d/\d|enchanted \w+ (is|becomes) a )",
             list(map(str.lower, get_oracle_texts(c)))))),
-        cards_disabling_cmc_3))
+        cards_disabling))
 
     disabling_stats_data = {
         'Disabling cards': len(cards_disabling),
-        'Disabling cards (CMC <= 3, creature, loses all abilities)':
-            len(cards_disabling_cmc_3_creature_no_abilities),
-        "Disabling cards (CMC <= 3, creature, can't attack or block)":
-            len(cards_disabling_cmc_3_creature_cant_attack_or_block),
-        'Disabling cards (CMC <= 3, creature, tap)': len(cards_disabling_cmc_3_creature_tap),
-        'Disabling cards (CMC <= 3, creature, phase out)':
-            len(cards_disabling_cmc_3_creature_phaseout),
-        'Disabling cards (CMC <= 3, creature, mutate)': len(cards_disabling_cmc_3_creature_mutate),
+        'Disabling cards (creature, loses all abilities)':
+            len(cards_disabling_creature_no_abilities),
+        "Disabling cards (creature, can't attack or block)":
+            len(cards_disabling_creature_cant_attack_or_block),
+        'Disabling cards (creature, tap)': len(cards_disabling_creature_tap),
+        'Disabling cards (creature, phase out)':
+            len(cards_disabling_creature_phaseout),
+        'Disabling cards (creature, mutate)': len(cards_disabling_creature_mutate),
         }
 
     disabling_output_data = {
-        'Disabling cards (CMC <= 3, creature affection)': {
-            'Disabling cards (CMC <= 3, creature, loses all abilities)':
-                cards_disabling_cmc_3_creature_no_abilities,
-            "Disabling cards (CMC <= 3, creature, can't attack or block)":
-                cards_disabling_cmc_3_creature_cant_attack_or_block,
-            'Disabling cards (CMC <= 3, creature, tap)': cards_disabling_cmc_3_creature_tap,
-            'Disabling cards (CMC <= 3, creature, phase out)': cards_disabling_cmc_3_creature_phaseout,
-            'Disabling cards (CMC <= 3, creature, mutate)': cards_disabling_cmc_3_creature_mutate}}
+        'Disabling cards (creature affection)': {
+            'Disabling cards (creature, loses all abilities)':
+                cards_disabling_creature_no_abilities,
+            "Disabling cards (creature, can't attack or block)":
+                cards_disabling_creature_cant_attack_or_block,
+            'Disabling cards (creature, tap)': cards_disabling_creature_tap,
+            'Disabling cards (creature, phase out)': cards_disabling_creature_phaseout,
+            'Disabling cards (creature, mutate)': cards_disabling_creature_mutate}}
 
     cards_disabling_selected = []
     for data in disabling_output_data.values():
@@ -3190,8 +3280,8 @@ def assist_wipe_cards(cards, max_list_items = None, outformat = 'console'):
         cards_wipe_selected += cards_wipe_by_feature[feature][:max_list_items]
 
     features = cards_wipe_by_feature.keys()
-    features_sorted = tuple(('only affect opponent', no_feature,
-                             *(sorted(set(features) - {'only affect opponent', no_feature}))))
+    features_sorted = tuple(filter(lambda f: f in features, ('only affect opponent', no_feature,
+                             *(sorted(set(features) - {'only affect opponent', no_feature})))))
 
     if outformat == 'html':
         html = ''
@@ -3321,64 +3411,61 @@ def assist_graveyard_recursion_cards(cards, max_list_items = None, outformat = '
                     cards_grav_recur.append(card)
                     break
 
-    cards_grav_recur_cmc_3 = list(filter(lambda c: c['cmc'] <= 3, cards_grav_recur))
-
-    cards_grav_recur_cmc_3_target_creature = list(filter(
+    cards_grav_recur_target_creature = list(filter(
         lambda c: bool(list(in_strings('creature', list(map(str.lower, get_oracle_texts(c)))))),
-        cards_grav_recur_cmc_3))
-    cards_grav_recur_cmc_3_target_creature_battlefield = list(filter(
+        cards_grav_recur))
+    cards_grav_recur_target_creature_battlefield = list(filter(
         lambda c: bool(list(in_strings('battlefield', list(map(str.lower, get_oracle_texts(c)))))),
-        cards_grav_recur_cmc_3_target_creature))
-    cards_grav_recur_cmc_3_target_creature_hand = list(filter(
+        cards_grav_recur_target_creature))
+    cards_grav_recur_target_creature_hand = list(filter(
         lambda c: bool(list(in_strings('hand', list(map(str.lower, get_oracle_texts(c)))))),
-        [c for c in cards_grav_recur_cmc_3_target_creature
-         if c not in cards_grav_recur_cmc_3_target_creature_battlefield]))
-    cards_grav_recur_cmc_3_target_creature_library = list(filter(
+        [c for c in cards_grav_recur_target_creature
+         if c not in cards_grav_recur_target_creature_battlefield]))
+    cards_grav_recur_target_creature_library = list(filter(
         lambda c: bool(list(in_strings('library', list(map(str.lower, get_oracle_texts(c)))))),
-        [c for c in cards_grav_recur_cmc_3_target_creature
-         if c not in cards_grav_recur_cmc_3_target_creature_battlefield
-         and c not in cards_grav_recur_cmc_3_target_creature_hand]))
+        [c for c in cards_grav_recur_target_creature
+         if c not in cards_grav_recur_target_creature_battlefield
+         and c not in cards_grav_recur_target_creature_hand]))
 
-    cards_grav_recur_cmc_3_target_artifact = list(filter(
+    cards_grav_recur_target_artifact = list(filter(
         lambda c: bool(list(in_strings('artifact', list(map(str.lower, get_oracle_texts(c)))))),
-        [c for c in cards_grav_recur_cmc_3 if c not in cards_grav_recur_cmc_3_target_creature]))
+        [c for c in cards_grav_recur if c not in cards_grav_recur_target_creature]))
 
-    cards_grav_recur_cmc_3_target_instant_or_sorcery = list(filter(
+    cards_grav_recur_target_instant_or_sorcery = list(filter(
         lambda c: bool(list(search_strings('instant|sorcery', list(map(str.lower, get_oracle_texts(c)))))),
-        [c for c in cards_grav_recur_cmc_3 if c not in cards_grav_recur_cmc_3_target_creature
-         and c not in cards_grav_recur_cmc_3_target_artifact]))
+        [c for c in cards_grav_recur if c not in cards_grav_recur_target_creature
+         and c not in cards_grav_recur_target_artifact]))
 
-    cards_grav_recur_cmc_3_other = [
-        c for c in cards_grav_recur_cmc_3 if c not in cards_grav_recur_cmc_3_target_creature
-        and c not in cards_grav_recur_cmc_3_target_artifact
-        and c not in cards_grav_recur_cmc_3_target_instant_or_sorcery]
+    cards_grav_recur_other = [
+        c for c in cards_grav_recur if c not in cards_grav_recur_target_creature
+        and c not in cards_grav_recur_target_artifact
+        and c not in cards_grav_recur_target_instant_or_sorcery]
 
     grav_recur_stats_data = {
-        'Graveyard recursion cards': len(cards_grav_recur),
-        'Graveyard recursion cards (CMC <= 3)': len(cards_grav_recur_cmc_3),
-        'Graveyard recursion cards (CMC <= 3, creatures)': len(cards_grav_recur_cmc_3_target_creature),
-        'Graveyard recursion cards (CMC <= 3, creatures, to battlefield)': len(cards_grav_recur_cmc_3_target_creature_battlefield),
-        'Graveyard recursion cards (CMC <= 3, creatures, to hand)': len(cards_grav_recur_cmc_3_target_creature_hand),
-        'Graveyard recursion cards (CMC <= 3, creatures, to library)': len(cards_grav_recur_cmc_3_target_creature_library),
-        'Graveyard recursion cards (CMC <= 3, artifacts)': len(cards_grav_recur_cmc_3_target_artifact),
-        'Graveyard recursion cards (CMC <= 3, instants or sorcery)': len(cards_grav_recur_cmc_3_target_instant_or_sorcery),
-        'Graveyard recursion cards (CMC <= 3, other)': len(cards_grav_recur_cmc_3_other),
+        'Graveyard recursion cards (total)': len(cards_grav_recur),
+        'Graveyard recursion cards (creatures)': len(cards_grav_recur_target_creature),
+        'Graveyard recursion cards (creatures, to battlefield)': len(cards_grav_recur_target_creature_battlefield),
+        'Graveyard recursion cards (creatures, to hand)': len(cards_grav_recur_target_creature_hand),
+        'Graveyard recursion cards (creatures, to library)': len(cards_grav_recur_target_creature_library),
+        'Graveyard recursion cards (artifacts)': len(cards_grav_recur_target_artifact),
+        'Graveyard recursion cards (instants or sorcery)': len(cards_grav_recur_target_instant_or_sorcery),
+        'Graveyard recursion cards (other)': len(cards_grav_recur_other),
         }
 
     grav_recur_output_data = {
-        'Graveyard recursion cards (CMC <= 3) by target': {
-            'Graveyard recursion cards (CMC <= 3, creatures, to battlefield)':
-                cards_grav_recur_cmc_3_target_creature_battlefield,
-            'Graveyard recursion cards (CMC <= 3, creatures, to hand)':
-                cards_grav_recur_cmc_3_target_creature_hand,
-            'Graveyard recursion cards (CMC <= 3, creatures, to library)':
-                cards_grav_recur_cmc_3_target_creature_library,
-            'Graveyard recursion cards (CMC <= 3, artifacts)':
-                cards_grav_recur_cmc_3_target_artifact,
-            'Graveyard recursion cards (CMC <= 3, instants or sorcery)':
-                cards_grav_recur_cmc_3_target_instant_or_sorcery,
-            'Graveyard recursion cards (CMC <= 3, other)':
-                cards_grav_recur_cmc_3_other}}
+        'Graveyard recursion cards (total) by target': {
+            'Graveyard recursion cards (creatures, to battlefield)':
+                cards_grav_recur_target_creature_battlefield,
+            'Graveyard recursion cards (creatures, to hand)':
+                cards_grav_recur_target_creature_hand,
+            'Graveyard recursion cards (creatures, to library)':
+                cards_grav_recur_target_creature_library,
+            'Graveyard recursion cards (artifacts)':
+                cards_grav_recur_target_artifact,
+            'Graveyard recursion cards (instants or sorcery)':
+                cards_grav_recur_target_instant_or_sorcery,
+            'Graveyard recursion cards (other)':
+                cards_grav_recur_other}}
 
     cards_grav_recur_selected = []
     for data in grav_recur_output_data.values():
@@ -3446,19 +3533,14 @@ def assist_graveyard_hate_cards(cards, max_list_items = None, outformat = 'conso
                         break
 
     grav_hate_stats_data = {'Graveyard hate cards (total)': sum(map(len, cards_grav_hate.values()))}
-    grav_hate_output_data = {'Graveyard hate cards (CMC <= 3) by target': {}}
+    grav_hate_output_data = {'Graveyard hate cards by target': {}}
     cards_grav_hate_keys = list(cards_grav_hate.keys())
     for target in cards_grav_hate_keys:
         cards_list = cards_grav_hate[target]
-        target_cmc3 = target+' (CMC <= 3)'
-        cards_grav_hate[target_cmc3] = list(filter(lambda c: c['cmc'] <= 3, cards_list))
         title = 'Graveyard hate cards'
         title_target = title + ' ('+target+')'
-        title_target_cmc3 = title + ' ('+target+', CMC <= 3)'
         grav_hate_stats_data[title_target] = len(cards_list)
-        grav_hate_stats_data[title_target_cmc3] = len(cards_grav_hate[target_cmc3])
-        grav_hate_output_data['Graveyard hate cards (CMC <= 3) by target'][title_target_cmc3] = \
-            cards_grav_hate[target_cmc3]
+        grav_hate_output_data['Graveyard hate cards by target'][title_target] = cards_list
 
     cards_grav_hate_selected = []
     for data in grav_hate_output_data.values():
@@ -3536,55 +3618,59 @@ def assist_copy_cards(cards, max_list_items = None, outformat = 'console'):
                     cards_copy.append(card)
                     break
 
-    cards_copy_cmc_3 = list(filter(lambda c: c['cmc'] <= 3, cards_copy))
-
-    cards_copy_cmc_3_target_creature = list(filter(
+    cards_copy_target_creature = list(filter(
         lambda c: bool(list(in_strings('creature', list(map(str.lower, get_oracle_texts(c)))))),
-        cards_copy_cmc_3))
-    cards_copy_cmc_3_target_creature_graveyard = list(filter(
+        cards_copy))
+    cards_copy_target_creature_graveyard = list(filter(
         lambda c: bool(list(in_strings('graveyard', list(map(str.lower, get_oracle_texts(c)))))),
-        cards_copy_cmc_3_target_creature))
-    cards_copy_cmc_3_target_creature_hand = list(filter(
+        cards_copy_target_creature))
+    cards_copy_target_creature_hand = list(filter(
         lambda c: bool(list(in_strings('hand', list(map(str.lower, get_oracle_texts(c)))))),
-        [c for c in cards_copy_cmc_3_target_creature
-         if c not in cards_copy_cmc_3_target_creature_graveyard]))
-    cards_copy_cmc_3_target_creature_battlefield = [
-        c for c in cards_copy_cmc_3_target_creature
-        if c not in cards_copy_cmc_3_target_creature_graveyard
-        and c not in cards_copy_cmc_3_target_creature_hand]
+        [c for c in cards_copy_target_creature
+         if c not in cards_copy_target_creature_graveyard]))
+    cards_copy_target_creature_battlefield = [
+        c for c in cards_copy_target_creature
+        if c not in cards_copy_target_creature_graveyard
+        and c not in cards_copy_target_creature_hand]
 
-    cards_copy_cmc_3_target_artifact = list(filter(
+    cards_copy_target_artifact = list(filter(
         lambda c: bool(list(in_strings('artifact', list(map(str.lower, get_oracle_texts(c)))))),
-        [c for c in cards_copy_cmc_3 if c not in cards_copy_cmc_3_target_creature]))
+        [c for c in cards_copy if c not in cards_copy_target_creature]))
 
-    cards_copy_cmc_3_target_instant_or_sorcery = list(filter(
+    cards_copy_target_instant_or_sorcery = list(filter(
         lambda c: bool(list(search_strings('instant|sorcery', list(map(str.lower, get_oracle_texts(c)))))),
-        [c for c in cards_copy_cmc_3 if c not in cards_copy_cmc_3_target_creature
-         and c not in cards_copy_cmc_3_target_artifact]))
+        [c for c in cards_copy if c not in cards_copy_target_creature
+         and c not in cards_copy_target_artifact]))
+
+    cards_copy_target_other = [
+        c for c in cards_copy if c not in cards_copy_target_creature
+        and c not in cards_copy_target_artifact and c not in cards_copy_target_instant_or_sorcery]
 
     copy_stats_data = {
-        'Copy cards': len(cards_copy),
-        'Copy cards (CMC <= 3)': len(cards_copy_cmc_3),
-        'Copy cards (CMC <= 3, creatures)': len(cards_copy_cmc_3_target_creature),
-        'Copy cards (CMC <= 3, creatures, from battlefield)': len(cards_copy_cmc_3_target_creature_battlefield),
-        'Copy cards (CMC <= 3, creatures, from graveyard)': len(cards_copy_cmc_3_target_creature_graveyard),
-        'Copy cards (CMC <= 3, creatures, from hand)': len(cards_copy_cmc_3_target_creature_hand),
-        'Copy cards (CMC <= 3, artifacts)': len(cards_copy_cmc_3_target_artifact),
-        'Copy cards (CMC <= 3, instants or sorcery)': len(cards_copy_cmc_3_target_instant_or_sorcery),
+        'Copy cards (total)': len(cards_copy),
+        'Copy cards (creatures)': len(cards_copy_target_creature),
+        'Copy cards (creatures, from battlefield)': len(cards_copy_target_creature_battlefield),
+        'Copy cards (creatures, from graveyard)': len(cards_copy_target_creature_graveyard),
+        'Copy cards (creatures, from hand)': len(cards_copy_target_creature_hand),
+        'Copy cards (artifacts)': len(cards_copy_target_artifact),
+        'Copy cards (instants or sorcery)': len(cards_copy_target_instant_or_sorcery),
+        'Copy cards (other)': len(cards_copy_target_other),
         }
 
     copy_output_data = {
-        'Copy cards (CMC <= 3) by target': {
-            'Copy cards (CMC <= 3, creatures, from battlefield)':
-                cards_copy_cmc_3_target_creature_battlefield,
-            'Copy cards (CMC <= 3, creatures, from graveyard)':
-                cards_copy_cmc_3_target_creature_graveyard,
-            'Copy cards (CMC <= 3, creatures, from hand)':
-                cards_copy_cmc_3_target_creature_hand,
-            'Copy cards (CMC <= 3, artifacts)':
-                cards_copy_cmc_3_target_artifact,
-            'Copy cards (CMC <= 3, instants or sorcery)':
-                cards_copy_cmc_3_target_instant_or_sorcery}}
+        'Copy cards by target': {
+            'Copy cards (creatures, from battlefield)':
+                cards_copy_target_creature_battlefield,
+            'Copy cards (creatures, from graveyard)':
+                cards_copy_target_creature_graveyard,
+            'Copy cards (creatures, from hand)':
+                cards_copy_target_creature_hand,
+            'Copy cards (artifacts)':
+                cards_copy_target_artifact,
+            'Copy cards (instants or sorcery)':
+                cards_copy_target_instant_or_sorcery,
+            'Copy cards (other)':
+                cards_copy_target_other}}
 
     copy_cards_selected = []
     for data in copy_output_data.values():
@@ -3632,6 +3718,121 @@ def assist_copy_cards(cards, max_list_items = None, outformat = 'console'):
         print('')
 
     return copy_cards_selected
+
+def assist_selfimproving_creature_cards(cards, max_list_items = None, outformat = 'console'):
+    """Show pre-selected self-improving creatures cards organised by features,
+       for the user to select some"""
+
+    regex_end = " ("+PLAYER_REGEXP+r" may )?(add|put|double) [^.]*\+[0-9]?[0-9x]/\+[0-9]?[0-9x] counter (on (it|<name>|each|every|all))"
+
+    selfimproving_regexes = {
+        #'when event': [
+        #    (IFWHEN_REGEXP.replace('if|', ''))+'[^.]+'+regex_end],
+        'each turn': [
+            'at the beginning of your (upkeep|end step|combat)[^.]+'+regex_end],
+        'every spell cast': [
+            "whenever "+PLAYER_REGEXP+" casts? a spell that's white, blue, black, or red,"+regex_end,
+            "whenever "+PLAYER_REGEXP+" casts? a spell,"+regex_end,
+            "whenever "+PLAYER_REGEXP+" casts? (your|its|they) first spell( during each opponent's turn)?,"+regex_end],
+        'every land fall': [
+            "whenever a land enters the battlefield under your control,"+regex_end],
+        'every creature ETB': [
+            'whenever (a|another) creature( token)? enters the battlefield( under your control)?,'+regex_end],
+        'every creature LTB': [
+            'whenever (a|another) creature( token)?( you control)? dies,'+regex_end],
+        'every tap creature': [
+            'whenever a creature an opponent controls becomes tapped'+regex_end],
+        # TODO add regex matching events that produces almost every turn
+    }
+
+    excludes = [
+        '-[0-9]?[0-9x]/-[0-9]?[0-9x] counter', 'cumulative upkeep']
+
+    selfimproving_creatures_cards = {}
+    for card in cards:
+        skip = False
+        if 'card_faces' in card:
+            for face in card['card_faces']:
+                if not is_creature(face):
+                    skip = True
+                    break
+        elif not is_creature(card):
+            skip = True
+        if skip:
+            continue
+
+        oracle_texts = get_oracle_texts(card, replace_name = '<name>')
+        oracle_texts_low = list(map(str.lower, oracle_texts))
+        add = False
+        for feature, regexes in selfimproving_regexes.items():
+            for regex in regexes:
+                if list(search_strings(regex, oracle_texts_low)):
+                    add = True
+                    for xregex in excludes:
+                        if list(search_strings(xregex, oracle_texts_low)):
+                            add = False
+                            break
+                    if add:
+                        if feature not in selfimproving_creatures_cards:
+                            selfimproving_creatures_cards[feature] = []
+                        if card not in selfimproving_creatures_cards[feature]:
+                            selfimproving_creatures_cards[feature].append(card)
+                    break
+
+    selfimproving_creatures_stats_data = {
+        'Self-improving creature cards (total)':
+            sum(map(len, selfimproving_creatures_cards.values()))}
+    selfimproving_creatures_output_data = {
+        'Self-improving creature cards': {}}
+    for feature in selfimproving_regexes:
+        if feature in selfimproving_creatures_cards:
+            title = 'Self-improving creature cards ('+feature+')'
+            selfimproving_creatures_stats_data[title] = len(selfimproving_creatures_cards[feature])
+            selfimproving_creatures_output_data['Self-improving creature cards'][title] = \
+                selfimproving_creatures_cards[feature]
+
+    if outformat == 'html':
+        html = ''
+        html += '  <section>'+'\n'
+        html += '    <h3 id="selfimproving-creatures-cards">Self-improving creature cards</h3>\n'
+        html += '    <h4>Stats</h4>'+'\n'
+        html += '    <dl>'+'\n'
+        for title, count in selfimproving_creatures_stats_data.items():
+            html += '      <dt>'+title+'</dt>'+'\n'
+            html += '      <dd>'+str(count)+'</dd>'+'\n'
+        html += '    </dl>'+'\n'
+        for section, data in selfimproving_creatures_output_data.items():
+            if data:
+                html += '    <h4>'+section+'</h4>'+'\n'
+                for title, cards_list in data.items():
+                    title += ': '+str(len(cards_list))
+                    html += '    <article>'+'\n'
+                    html += '      <details>'+'\n'
+                    html += '        <summary>'+title+'</summary>'+'\n'
+                    html += print_cards_list(sort_cards_by_cmc_and_name(cards_list),
+                                            limit = max_list_items, outformat = outformat,
+                                            return_str = True, card_feat = 'selfimproving-creatures')
+                    html += '      </details>'+'\n'
+                    html += '    </article>'+'\n'
+        html += '  </section>'+'\n'
+        print(html)
+
+    if outformat == 'console':
+        for title, count in selfimproving_creatures_stats_data.items():
+            print(title+':', count)
+        print('')
+        for section, data in selfimproving_creatures_output_data.items():
+            print(section)
+            print('')
+            for title, cards_list in data.items():
+                print('   '+title+':', len(cards_list))
+                print('')
+                print_cards_list(sort_cards_by_cmc_and_name(cards_list), limit = max_list_items,
+                                 indent = 6, outformat = outformat)
+                print('')
+        print('')
+
+    return selfimproving_creatures_cards
 
 def assist_creature_effects(cards, max_list_items = None, outformat = 'console'):
     """Show pre-selected creature effects cards organised by features, for the user to select some"""
@@ -4815,15 +5016,6 @@ def assist_gaincontrol(cards, max_list_items = None, outformat = 'console'):
 
     return gaincontrol_cards_selected
 
-def print_combo_card_names(combo):
-    """Print card's names of a combo"""
-
-    card_names = []
-    for num in range(1, 11):
-        if combo['Card '+str(num)]:
-            card_names.append(combo['Card '+str(num)])
-    print(' + '.join(card_names))
-
 def assist_protect(cards, max_list_items = None, outformat = 'console'):
     """Show pre-selected protect cards organised by features, for the user to select some"""
 
@@ -5074,9 +5266,8 @@ def get_combos(combos, cards, name = None, only_ok = True, combo_res_regex = Non
            excludes         list     a list of tuple of card names to exclude
     """
     card_combos = {}
-    for combo in combos:
+    for combo_id, combo in combos.items():
         card_names = tuple(sorted(combo['c'])) if 'c' in combo and combo['c'] else tuple()
-        combo_id = card_names
         if not combo_id or (excludes and combo_id in excludes):
             continue
         add_combo = (not name or any(filter(lambda names: name in names, card_names))
@@ -5182,15 +5373,6 @@ def export_gexf(cards_relations):
         f_write.write("\t"+"\t"+'</edges>'+"\n")
         f_write.write("\t"+'</graph>'+"\n")
         f_write.write('</gexf>')
-
-# def combo_replace_effects_by_cards(combos, cards_list):
-#     """Return a copy of combos dict with effects (value) replaced by the list of cards
-#        matching the card names (key)"""
-#
-#     new_combos = {}
-#     for names in combos.keys():
-#         new_combos[names] = names_to_cards(names, cards_list)
-#     return new_combos
 
 def analyse_combo(combo):
     """Return a dict of a combo with added following attributes to its values:
@@ -5528,7 +5710,7 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '    details details summary {'+'\n'
     html += '      font-size: 0.8em;'+'\n'
     html += '    }'+'\n'
-    html += '    summary.have-selection { background-color: #b1dbba; }'+'\n'
+    html += '    summary.have-selection { background-color: #d9d7a1; }'+'\n'
     html += '    .toc ol {'+'\n'
     html += '      color: #666;'+'\n'
     html += '      list-style: none;'+'\n'
@@ -5547,6 +5729,8 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '    .toc dd {'+'\n'
     html += '      text-align: right;'+'\n'
     html += '    }'+'\n'
+    html += '    .toc .deck-by-categories { margin-top: 15px; }'+'\n'
+    html += '    .toc .deck-by-categories a { font-size: 1em; color: #666; font-weight: bold; }'+'\n'
     html += '    .combos-list th, .combos-list td { padding: 0 10px; text-align: center; }'+'\n'
     html += '    .combos-list th { color: gray; }'+'\n'
     html += '    .combos-list td.effect { font-size: 0.9em; }'+'\n'
@@ -5595,7 +5779,7 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '      width: 95%;'+'\n'
     html += '      max-width: 300px;'+'\n'
     html += '    }'+'\n'
-    html += '    button.download { background-color: lightblue; }'+'\n'
+    html += '    button.download { background-color: #d5d48c; }'+'\n'
     html += '    button.download::before {'+'\n'
     html += '      content: "⤓";'+'\n'
     html += '      font-size: 1.6em;'+'\n'
@@ -5605,6 +5789,9 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '    }'+'\n'
     html += '    h1 small, h2 small, h3 small, h4 small { font-weight: normal; }'+'\n'
     html += '    #cards-not-suggested h4 a { color: inherit; }'+'\n'
+    html += '    .not-playable .rules0 dt { line-height: 1.4em; }'+'\n'
+    html += '    .not-playable .rules0 dt::after { content: ":"; }'+'\n'
+    html += '    .not-playable .rules0 dd { margin-left: 15px; }'+'\n'
     html += '    .red, a.red { color: red; }'+'\n'
     html += '    .blue, a.blue { color: blue; }'+'\n'
     html += '    .gray, a.gray { color: gray; }'+'\n'
@@ -5632,13 +5819,14 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '      summary::-webkit-details-marker { color: #00ACF3; }'+'\n'
     html += '      details summary { background-color: #444; }'+'\n'
     html += '      details summary a { color: inherit; text-decoration-color: #777; }'+'\n'
-    html += '      summary.have-selection { background-color: #3e6045; }'+'\n'
+    html += '      summary.have-selection { background-color: #605f3e; }'+'\n'
     html += '      tr.card-line.selected, td.selected { background: #333; }'+'\n'
     html += '      dt { color: #aaa; }'+'\n'
     html += '      .toc { color: #ccc; }'+'\n'
     html += '      .toc dt { color: inherit; }'+'\n'
     html += '       .toc ol { color: #aaa; }'+'\n'
     html += '      .toc ol > li a { text-decoration-color: #666; }'+'\n'
+    html += '      .toc .deck-by-categories a { color: #bbb; }'+'\n'
     html += '      .combos-list th { color: gray; }'+'\n'
     html += '      .red, a.red { color: red; }'+'\n'
     html += '      .blue, a.blue { color: blue; }'+'\n'
@@ -5652,13 +5840,13 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '      .light_yellow, a.light_yellow { color: darkkhaki; }'+'\n'
     html += '      .light_blue, a.light_blue { color: lightblue; }'+'\n'
     html += '      .dark_grey, a.dark_grey { color: gray; }'+'\n'
-    html += '      button.download { background-color: #51d1fb; }'+'\n'
+    html += '      button.download { background-color: #a8a761; }'+'\n'
     html += '    }'+'\n'
     html += '  </style>'+'\n'
     html += '  <script>'+'\n'
-    html += '    var deckList = [];'+'\n'
+    html += '    let deckList = [];'+'\n'
     if cards_preselected:
-        html += '    var inputDeckList = ['+'\n'
+        html += '    let inputDeckList = ['+'\n'
         cards_preselected_len = len(cards_preselected)
         for index, card in enumerate(cards_preselected):
             html += '      "'+card['name'].replace('"', "'")+'"'
@@ -5673,17 +5861,17 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '    function updateDetailsSummaryColor(cardInputOrLine, toggle = "add") {'+'\n'
     html += '      if (cardInputOrLine) {'+'\n'
     html += '        if (toggle == "add") {'+'\n'
-    html += '          var upDetailsElt = cardInputOrLine.closest("details");'+'\n'
+    html += '          let upDetailsElt = cardInputOrLine.closest("details");'+'\n'
     html += '          if (upDetailsElt != null) {'+'\n'
-    html += '            var summaryElt = upDetailsElt.querySelector(":scope > summary");'+'\n'
+    html += '            let summaryElt = upDetailsElt.querySelector(":scope > summary");'+'\n'
     html += '            if (summaryElt != null) {'+'\n'
     html += '              if (! summaryElt.classList.contains("have-selection")) {'+'\n'
     html += '                summaryElt.classList.add("have-selection");'+'\n'
     html += '              }'+'\n'
     html += '            }'+'\n'
-    html += '            var up2DetailsElt = upDetailsElt.parentElement.closest("details");'+'\n'
+    html += '            let up2DetailsElt = upDetailsElt.parentElement.closest("details");'+'\n'
     html += '            if (up2DetailsElt != null) {'+'\n'
-    html += '              var summary2Elt = up2DetailsElt.querySelector(":scope > summary");'+'\n'
+    html += '              let summary2Elt = up2DetailsElt.querySelector(":scope > summary");'+'\n'
     html += '              if (summary2Elt != null) {'+'\n'
     html += '                if (! summary2Elt.classList.contains("have-selection")) {'+'\n'
     html += '                  summary2Elt.classList.add("have-selection");'+'\n'
@@ -5693,20 +5881,20 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '          }'+'\n'
     html += '        }'+'\n'
     html += '        else if (toggle == "remove") {'+'\n'
-    html += '          var upDetailsElt = cardInputOrLine.closest("details");'+'\n'
+    html += '          let upDetailsElt = cardInputOrLine.closest("details");'+'\n'
     html += '          if (upDetailsElt != null) {'+'\n'
-    html += '            var summaryElt = upDetailsElt.querySelector(":scope > summary");'+'\n'
+    html += '            let summaryElt = upDetailsElt.querySelector(":scope > summary");'+'\n'
     html += '            if (summaryElt != null) {'+'\n'
     html += '              if (summaryElt.classList.contains("have-selection")) {'+'\n'
-    html += '                var childrenSelected = upDetailsElt.querySelectorAll(".selected");'+'\n'
+    html += '                let childrenSelected = upDetailsElt.querySelectorAll(".selected");'+'\n'
     html += '                if (! childrenSelected || childrenSelected.length == 0) {'+'\n'
     html += '                  summaryElt.classList.remove("have-selection");'+'\n'
-    html += '                  var up2DetailsElt = upDetailsElt.parentElement.closest("details");'+'\n'
+    html += '                  let up2DetailsElt = upDetailsElt.parentElement.closest("details");'+'\n'
     html += '                  if (up2DetailsElt != null) {'+'\n'
-    html += '                    var summary2Elt = up2DetailsElt.querySelector(":scope > summary");'+'\n'
+    html += '                    let summary2Elt = up2DetailsElt.querySelector(":scope > summary");'+'\n'
     html += '                    if (summary2Elt != null) {'+'\n'
     html += '                      if (summary2Elt.classList.contains("have-selection")) {'+'\n'
-    html += '                        var childrenHaveSelection = up2DetailsElt.querySelectorAll(".have-selection");'+'\n'
+    html += '                        let childrenHaveSelection = up2DetailsElt.querySelectorAll(".have-selection");'+'\n'
     html += '                        if (! childrenHaveSelection || childrenHaveSelection.length == 0 || ('+'\n'
     html += '                            childrenHaveSelection.length == 1 && childrenHaveSelection[0] == summary2Elt)) {'+'\n'
     html += '                          summary2Elt.classList.remove("have-selection");'+'\n'
@@ -5722,15 +5910,16 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '      }'+'\n'
     html += '    };'+'\n'
     html += '    function updateDeckList(checkboxElement, callType = "onChange") {'+'\n'
-    html += '      console.log("updateDeckList() "+callType);'+'\n'
+    #html += '      console.log(" ");'+'\n'
+    #html += '      console.log("   updateDeckList() "+checkboxElement.value+" mode: "+callType);'+'\n'
     html += '      checkboxElement.disabled = true;'+'\n'
     html += '      let cardType = checkboxElement.dataset.cardtype;'+'\n'
-    html += '      var typeCountElement = document.getElementById(cardType+"-count");'+'\n'
+    html += '      let typeCountElement = document.getElementById(cardType+"-count");'+'\n'
     html += '      let cardName = checkboxElement.value;'+'\n'
     html += '      let inDeckList = deckList.indexOf(cardName);'+'\n'
-    html += '      var cssclass = getCardCssClass(cardName);'+'\n'
-    html += '      var cardFeatures = [];'+'\n'
-    html += '      var cardElements = document.querySelectorAll("."+cssclass);'+'\n'
+    html += '      let cssclass = getCardCssClass(cardName);'+'\n'
+    html += '      let cardFeatures = [];'+'\n'
+    html += '      let cardElements = document.querySelectorAll("."+cssclass);'+'\n'
     html += '      document.querySelectorAll("."+cssclass+" input").forEach(function (item) {'+'\n'
     html += '        if ("cardfeat" in item.dataset) {'+'\n'
     html += '          let cardFeat = item.dataset.cardfeat;'+'\n'
@@ -5739,77 +5928,95 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '          }'+'\n'
     html += '        }'+'\n'
     html += '      });'+'\n'
-    html += '      var curCardLineElt = checkboxElement.closest("tr");'+'\n'
+    #html += '      console.log("   updateDeckList() "+checkboxElement.value+" features: "+(cardFeatures.join(", ")));'+'\n'
+    html += '      let curCardLineElt = checkboxElement.closest("tr");'+'\n'
     html += '      if(checkboxElement.checked && inDeckList < 0) {'+'\n'
     html += '        deckList.push(cardName);'+'\n'
+    #html += '        console.log("   updateDeckList() "+checkboxElement.value+" ADDED to deck");'+'\n'
     html += '        typeCountElement.innerHTML = Number(typeCountElement.innerHTML) + 1;'+'\n'
+    #html += '        console.log("   updateDeckList() "+checkboxElement.value+" UPDATED counter(type): "+cardType+"-count");'+'\n'
+    #html += '        console.log("   updateDeckList() "+checkboxElement.value+" UPDATING cards elements ...");'+'\n'
     html += '        cardElements.forEach(function (item) {'+'\n'
     html += '          item.classList.add("selected");'+'\n'
-    html += '          var itemInput = item.querySelector("input");'+'\n'
+    html += '          let itemInput = item.querySelector("input");'+'\n'
     html += '          if (itemInput) { itemInput.checked = true; }'+'\n'
     html += '          updateDetailsSummaryColor(item, "add");'+'\n'
     html += '        });'+'\n'
-    html += '        for (i = 0; i < cardFeatures.length; i++) {'+'\n'
-    html += '          var cardFeat = cardFeatures[i];'+'\n'
-    html += '          var featCountElements = document.querySelectorAll("."+cardFeat+"-count");'+'\n'
-    html += '          var featCardsListTableElt = document.querySelector("."+cardFeat+"-cards");'+'\n'
+    html += '        for (let i = 0; i < cardFeatures.length; i++) {'+'\n'
+    html += '          let cardFeat = cardFeatures[i];'+'\n'
+    html += '          let featCountElements = document.querySelectorAll("."+cardFeat+"-count");'+'\n'
+    html += '          let featCardsListTableElt = document.querySelector("."+cardFeat+"-cards");'+'\n'
     html += '          if (featCountElements != null && featCountElements.length) {'+'\n'
     html += '            featCountElements.forEach(function (item) {'+'\n'
     html += '              item.innerHTML = Number(item.innerHTML) + 1;'+'\n'
+    #html += '              console.log("   updateDeckList() "+checkboxElement.value+" UPDATED counter(feat): "+cardFeat+"-count");'+'\n'
     html += '            });'+'\n'
     html += '          }'+'\n'
     html += '          if (curCardLineElt != null && featCardsListTableElt != null) {'+'\n'
-    html += '            var existingCardLineElt = featCardsListTableElt.querySelector("."+cssclass);'+'\n'
+    html += '            let existingCardLineElt = featCardsListTableElt.querySelector("."+cssclass);'+'\n'
     html += '            if (existingCardLineElt == null) {'+'\n'
-    html += '              var newCardLineNode = curCardLineElt.cloneNode(true);'+'\n'
+    html += '              let newCardLineNode = curCardLineElt.cloneNode(true);'+'\n'
     html += '              newCardLineNode.querySelector("input").disabled = false;'+'\n'
+    html += '              let classToShow = ["mana", "type"];'+'\n'
+    html += '              for (let j = 0; j < classToShow.length; j++) {'+'\n'
+    html += '                let cell = newCardLineNode.querySelector("."+classToShow[j]);'+'\n'
+    html += '                if (cell != null && cell.style.display == "none") {'+'\n'
+    html += '                  cell.style.display = "table-cell";'+'\n'
+    html += '                }'+'\n'
+    html += '              }'+'\n'
     html += '              featCardsListTableElt.appendChild(newCardLineNode);'+'\n'
     html += '              updateDetailsSummaryColor(newCardLineNode, "add");'+'\n'
+    #html += '              console.log("   updateDeckList() "+checkboxElement.value+" CLONED to "+cardFeat+"-cards");'+'\n'
     html += '            }'+'\n'
     html += '          }'+'\n'
     html += '        }'+'\n'
     html += '      }'+'\n'
     html += '      else if(! checkboxElement.checked && inDeckList > -1) {'+'\n'
     html += '        deckList.splice(inDeckList, 1);'+'\n'
+    #html += '        console.log("   updateDeckList() "+checkboxElement.value+" REMOVED from deck");'+'\n'
     html += '        typeCountElement.innerHTML = Number(typeCountElement.innerHTML) - 1;'+'\n'
+    #html += '        console.log("   updateDeckList() "+checkboxElement.value+" UPDATED counter(type): "+cardType+"-count");'+'\n'
+    #html += '        console.log("   updateDeckList() "+checkboxElement.value+" UPDATING cards elements ...");'+'\n'
     html += '        cardElements.forEach(function (item) {'+'\n'
     html += '          item.classList.remove("selected");'+'\n'
-    html += '          var itemInput = item.querySelector("input");'+'\n'
+    html += '          let itemInput = item.querySelector("input");'+'\n'
     html += '          if (itemInput) { itemInput.checked = false; }'+'\n'
     html += '          updateDetailsSummaryColor(item, "remove");'+'\n'
     html += '        });'+'\n'
-    html += '        for (i = 0; i < cardFeatures.length; i++) {'+'\n'
-    html += '          var cardFeat = cardFeatures[i];'+'\n'
-    html += '          var featCountElements = document.querySelectorAll("."+cardFeat+"-count");'+'\n'
-    html += '          var featCardsListTableElt = document.querySelector("."+cardFeat+"-cards");'+'\n'
+    html += '        for (let i = 0; i < cardFeatures.length; i++) {'+'\n'
+    html += '          let cardFeat = cardFeatures[i];'+'\n'
+    html += '          let featCountElements = document.querySelectorAll("."+cardFeat+"-count");'+'\n'
+    html += '          let featCardsListTableElt = document.querySelector("."+cardFeat+"-cards");'+'\n'
     html += '          if (featCountElements != null && featCountElements.length) {'+'\n'
     html += '            featCountElements.forEach(function (item) {'+'\n'
     html += '              item.innerHTML = Number(item.innerHTML) - 1;'+'\n'
+    #html += '              console.log("   updateDeckList() "+checkboxElement.value+" UPDATED counter(feat): "+cardFeat+"-count");'+'\n'
     html += '            });'+'\n'
     html += '          }'+'\n'
     html += '          if (curCardLineElt != null && featCardsListTableElt != null) {'+'\n'
-    html += '            var existingCardLinesElt = featCardsListTableElt.querySelectorAll("."+cssclass);'+'\n'
+    html += '            let existingCardLinesElt = featCardsListTableElt.querySelectorAll("."+cssclass);'+'\n'
     html += '            if (existingCardLinesElt != null && existingCardLinesElt.length > 0) {'+'\n'
     html += '              existingCardLinesElt.forEach(function (item) {'+'\n'
-    html += '                var itemParent = item.parentElement;'+'\n'
+    html += '                let itemParent = item.parentElement;'+'\n'
     html += '                item.remove();'+'\n'
+    #html += '                console.log("   updateDeckList() "+checkboxElement.value+" DELETED from "+cardFeat+"-cards");'+'\n'
     html += '                updateDetailsSummaryColor(itemParent, "remove");'+'\n'
     html += '              });'+'\n'
     html += '            }'+'\n'
     html += '          }'+'\n'
     html += '        }'+'\n'
     html += '      };'+'\n'
-    html += '      var deck_size_elt = document.getElementById("deck-size");'+'\n'
+    html += '      let deck_size_elt = document.getElementById("deck-size");'+'\n'
     html += '      deck_size_elt.innerHTML = ": "+deckList.length+" cards";'+'\n'
     html += '      checkboxElement.disabled = false;'+'\n'
     html += '    };'+'\n'
     html += '    function getCommanderName(clean = false) {'+'\n'
-    html += '      var nameElt = document.getElementById("commander-name");'+'\n'
+    html += '      let nameElt = document.getElementById("commander-name");'+'\n'
     html += '      if (clean) { return nameElt.innerHTML.replaceAll(/\\W/g, ""); }'+'\n'
     html += '      return nameElt.innerHTML;'+'\n'
     html += '    };'+'\n'
     html += '    function generateDeckList() {'+'\n'
-    html += '      var dekList = "";'+'\n'
+    html += '      let dekList = "";'+'\n'
     html += '      if (deckList.length > 0) {'+'\n'
     html += '        dekList = "1 "+deckList.join("\\n1 ")+"\\n\\n";'+'\n'
     html += '      }'+'\n'
@@ -5817,14 +6024,14 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '      return dekList;'+'\n'
     html += '    };'+'\n'
     html += '    function downloadDeckList() {'+'\n'
-    html += '      var mime_type = "text/plain";'+'\n'
-    html += '      var blob = new Blob([generateDeckList()], {type: mime_type});'+'\n'
-    html += '      var dlink = document.createElement("a");'+'\n'
+    html += '      let mime_type = "text/plain";'+'\n'
+    html += '      let blob = new Blob([generateDeckList()], {type: mime_type});'+'\n'
+    html += '      let dlink = document.createElement("a");'+'\n'
     html += '      dlink.download = getCommanderName(true)+".dek";'+'\n'
     html += '      dlink.href = window.URL.createObjectURL(blob);'+'\n'
     html += '      dlink.onclick = function(e) {'+'\n'
     html += '        // revokeObjectURL needs a delay to work properly'+'\n'
-    html += '        var that = this;'+'\n'
+    html += '        let that = this;'+'\n'
     html += '        setTimeout(function() {'+'\n'
     html += '          window.URL.revokeObjectURL(that.href);'+'\n'
     html += '        }, 1500);'+'\n'
@@ -5839,32 +6046,34 @@ def display_html_header(tab_title = 'MTG Deck Builder Assistant | made by Michae
     html += '      }'+'\n'
     html += '    };'+'\n'
     html += '    function uncheckAll() {'+'\n'
-    html += '      var checkedBoxes = document.querySelectorAll("input[name=cards]:checked");'+'\n'
-    html += '      for (i = 0; i < checkedBoxes.length; i++) { checkedBoxes[i].checked = false; }'+'\n'
+    html += '      let checkedBoxes = document.querySelectorAll("input[name=cards]:checked");'+'\n'
+    html += '      for (let i = 0; i < checkedBoxes.length; i++) { checkedBoxes[i].checked = false; }'+'\n'
     html += '    };'
     html += '    function selectCommander() {'+'\n'
-    html += '      var commanderName = getCommanderName();'+'\n'
-    html += '      var cssclass = getCardCssClass(commanderName);'+'\n'
-    html += '      var cardElements = document.querySelectorAll("."+cssclass);'+'\n'
+    html += '      let commanderName = getCommanderName();'+'\n'
+    html += '      let cssclass = getCardCssClass(commanderName);'+'\n'
+    html += '      let cardElements = document.querySelectorAll("."+cssclass);'+'\n'
     html += '      cardElements.forEach(function (item) { item.classList.add("selected") });'+'\n'
     html += '    };'+'\n'
     if cards_preselected:
         html += '    function preselectCards() {'+'\n'
-        html += '      for (i = 0; i < inputDeckList.length; i++) {'+'\n'
-        html += '        var cardName = inputDeckList[i];'+'\n'
-        html += '        var cssclass = getCardCssClass(cardName);'+'\n'
-        html += '        var checkboxElement = document.querySelector("."+cssclass+" input");'+'\n'
+        html += '      for (let i = 0; i < inputDeckList.length; i++) {'+'\n'
+        html += '        let cardName = inputDeckList[i];'+'\n'
+        html += '        let cssclass = getCardCssClass(cardName);'+'\n'
+        html += '        let checkboxElement = document.querySelector("."+cssclass+" input");'+'\n'
         html += '        if (checkboxElement) {'+'\n'
         html += '          checkboxElement.checked = true;'+'\n'
-        # TODO restore: disabled because of a bug, that I still need to fix
-        #html += '          updateDeckList(checkboxElement, "forced");'+'\n'
+        #html += '          console.log(" ");'+'\n'
+        #html += '          console.log("preselectCards() "+cardName);'+'\n'
+        html += '          updateDeckList(checkboxElement, "forced");'+'\n'
+        #html += '          if (i == 5) { break; }'+'\n'
         html += '        }'+'\n'
         html += '      };'+'\n'
         html += '    };'+'\n'
         html += '    function moveUpNotSuggestedDiv() {'+'\n'
-        html += '      var notSuggestedDiv = document.getElementById("cards-not-suggested");'+'\n'
+        html += '      let notSuggestedDiv = document.getElementById("cards-not-suggested");'+'\n'
         html += '      if (notSuggestedDiv) {'+'\n'
-        html += '        var inputDeckInfoSection = document.getElementById("input-deck-info");'+'\n'
+        html += '        let inputDeckInfoSection = document.getElementById("input-deck-info");'+'\n'
         html += '        if (inputDeckInfoSection) {'+'\n'
         html += '          inputDeckInfoSection.appendChild(notSuggestedDiv);'+'\n'
         html += '        };'+'\n'
@@ -5985,6 +6194,10 @@ def get_html_toc(cssclass = '', show_deck_info = False):
     html += '                <dd class="best-creature-count">0</dd>'+'\n'
     html += '              </dl></li>'+'\n'
     html += '              <li><dl>'+'\n'
+    html += '                <dt><a href="#selfimproving-creatures-cards">Self-improving creatures</a></dt>'+'\n'
+    html += '                <dd class="selfimproving-creatures-count">0</dd>'+'\n'
+    html += '              </dl></li>'+'\n'
+    html += '              <li><dl>'+'\n'
     html += '                <dt><a href="#creature-effects-cards">Creatures effects</a></dt>'+'\n'
     html += '                <dd class="creature-effects-count">0</dd>'+'\n'
     html += '              </dl></li>'+'\n'
@@ -6052,7 +6265,7 @@ def get_html_toc(cssclass = '', show_deck_info = False):
     html += '                <dt><a href="#protect-cards">Protect</a></dt>'+'\n'
     html += '                <dd class="protect-count">0</dd>'+'\n'
     html += '              </dl></li>'+'\n'
-    html += '              <li><a href="#deck-by-categories">Deck by categories</a></li>'+'\n'
+    html += '              <li class="deck-by-categories"><a href="#deck-by-categories">Deck by categories</a></li>'+'\n'
     html += '            </ol>'+'\n'
     html += '          </div>'+'\n'
     html += '        </nav>'+'\n'
@@ -6689,7 +6902,8 @@ def assist_commander_keywords_common(commander_card, cards, limit = None, outfor
 
     return cards_common_keywords_selected
 
-def print_input_deck_info(cards, cards_names_not_found, cards_not_playable, outformat = 'console'):
+def print_input_deck_info(cards, cards_names_not_found, cards_not_playable, rules0,
+                          outformat = 'console'):
     """Print the input deck informations (cards not found, not playable, etc)"""
 
     if outformat == 'html':
@@ -6714,6 +6928,11 @@ def print_input_deck_info(cards, cards_names_not_found, cards_not_playable, outf
             html += '    <div class="not-playable">'+'\n'
             html += '      <h4>Cards not playable '
             html += '<small>(not rules 0 compatible, in excluded sets, or wrong color)</small></h4>\n'
+            html += '      <dl class="rules0">'+'\n'
+            html += '        <dt>Rules 0</dt>'+'\n'
+            html += '        <dd>'
+            html += (', '.join(list(map(lambda r: '<em>'+r+'</em>', rules0.split(' ')))))+'</dd>\n'
+            html += '      </dl>'
             html += print_cards_list(cards_not_playable, outformat = outformat, return_str = True,
                                      print_rarity = True)
             html += '    </div>'+'\n'
@@ -6852,10 +7071,9 @@ def main():
                         help='output to this file (default to stdout)')
     parser.add_argument('-d', '--outdir', default='/tmp',
                         help='output to this directory (default to /tmp)')
-    parser.add_argument('-0', '--rules0',
-                        default='no-expensive with-xmage-banned no-stickers no-alpha-bilands',
-                        help="rules 0 preset (default to "
-                             "'no-expensive with-xmage-banned no-stickers no-alpha-bilands')")
+    rules0_default = ['no-expensive', 'with-xmage-banned', 'no-stickers', 'no-alpha-bilands']
+    parser.add_argument('-0', '--rules0', nargs='*', default=rules0_default,
+                        help="rules 0 preset (default to '"+(' '.join(rules0_default))+"')")
     parser.add_argument('--list-rules0-preset', action='store_true', help="list rules 0 preset")
     parser.add_argument('-x', '--exclude', nargs='*', default=['set:LTR', 'set:SWS'],
                         help="exclude Sets or Cards (default to: 'set:LTR|set:SWS')")
@@ -6901,7 +7119,7 @@ def main():
     commander_combos_regex = '|'.join(args.combo) if args.combo else None
     combos_effects = {}
     combos_effects_matches = []
-    for combo in combos:
+    for combo in combos.values():
         if 'r' in combo and combo['r']:
             for line in combo['r'].replace('. ', '\n').replace('..', '.').split('\n'):
                 line_normalized = combo_effect_normalize(line)
@@ -6997,7 +7215,8 @@ def main():
                                         commander_legal))
     without_excluded_cards = list(filter(
         lambda c: 'name' not in c or c['name'] not in cards_excluded, without_excluded_sets))
-    valid_rules0 = list(filter(lambda c: filter_rules0(c, args.rules0), without_excluded_cards))
+    rules0 = ' '.join(args.rules0)
+    valid_rules0 = list(filter(lambda c: filter_rules0(c, rules0), without_excluded_cards))
     valid_colors = list(filter(filter_colors, valid_rules0))
     cards_ok = valid_colors
 
@@ -7031,10 +7250,10 @@ def main():
 
     if args.input_deck_file:
         print_input_deck_info(input_deck_cards, input_deck_cards_names_not_found,
-                              input_deck_cards_not_playable, outformat = outformat)
+                              input_deck_cards_not_playable, rules0, outformat = outformat)
 
     print_all_cards_stats(cards, non_empty_cards, commander_legal, without_excluded_sets,
-                          ','.join(sets_excluded), valid_rules0, args.rules0, outformat = outformat)
+                          ','.join(sets_excluded), valid_rules0, rules0, outformat = outformat)
 
     print_suggested_cards_stats(cards_ok, len(valid_rules0) - len(valid_colors),
                                 outformat = outformat)
@@ -7180,6 +7399,9 @@ def main():
     cards_best_creatures = assist_best_creature_cards(
         cards_ok, max_list_items = args.max_list_items, outformat = outformat)
 
+    cards_selfimproving = assist_selfimproving_creature_cards(
+        cards_ok, max_list_items = args.max_list_items, outformat = outformat)
+
     cards_effects = assist_creature_effects(cards_ok, max_list_items = args.max_list_items,
                                                     outformat = outformat)
 
@@ -7235,6 +7457,7 @@ def main():
             'Graveyard hate': cards_graveyard_hate,
             'Copy': cards_copy,
             'Best creatures': cards_best_creatures,
+            'Self-improving creatures': cards_selfimproving,
             'Creatures effects': cards_effects,
             'Best instant/sorcery': cards_best_instant_or_sorcery,
             'Counter spell': cards_counterspell,
@@ -7337,6 +7560,10 @@ def main():
         html += '              <details>'+'\n'
         html += '                <summary><a href="#best-creature-cards">Best creatures</a></summary>'+'\n'
         html += '                <table class="cards-list best-creature-cards"></table>'+'\n'
+        html += '              </details>'+'\n'
+        html += '              <details>'+'\n'
+        html += '                <summary><a href="#selfimproving-creatures-cards">Self-improving creatures</a></summary>'+'\n'
+        html += '                <table class="cards-list selfimproving-creatures-cards"></table>'+'\n'
         html += '              </details>'+'\n'
         html += '              <details>'+'\n'
         html += '                <summary><a href="#creature-effects-cards">Creatures effects</a></summary>'+'\n'
