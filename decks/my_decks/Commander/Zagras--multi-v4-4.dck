@@ -1,0 +1,87 @@
+1 [WOC:156] Command Tower
+1 [SHM:278*] Reflecting Pool
+1 [WOC:165] Path of Ancestry
+1 [VOC:181] Shadowblood Ridge
+1 [DIS:171] Blood Crypt
+1 [DMC:207] Dragonskull Summit
+1 [SLU:12] Blightstep Pathway
+1 [H1R:40] Prismatic Vista
+1 [ELD:244] Fabled Passage
+1 [CHK:282] Shinka, the Bloodsoaked Keep
+1 [ME3:214] Urborg
+1 [ME3:207] Hammerheim
+1 [CM2:233] Arcane Lighthouse
+1 [MH1:226] Mox Tantalite
+1 [WOC:145] Arcane Signet
+1 [CLB:332] Patriar's Seal
+1 [MH2:236] Sol Talisman
+1 [DIS:165] Rakdos Signet
+9 [KTK:258] Swamp
+8 [KTK:262] Mountain
+1 [MH2:401] Profane Tutor
+1 [PIP:186] Morbid Opportunist
+1 [RAV:81] Dark Confidant
+1 [HOP:67] Taurean Mauler
+1 [3ED:125] Royal Assassin
+1 [INV:102] Do or Die
+1 [POR:98] King's Assassin
+1 [SLD:18] Goblin Sharpshooter
+1 [G09:2] Maze of Ith
+1 [OTJ:325] Insatiable Avarice
+1 [HOP:36] Phyrexian Arena
+1 [SLD:365] Grim Tutor
+1 [AFC:331] Lightning Greaves
+1 [DOM:129] Goblin Chainwhirler
+1 [EXO:100] Scalding Salamander
+1 [MID:263] Haunted Ridge
+1 [BFZ:247] Smoldering Marsh
+1 [VOC:174] Foreboding Ruins
+1 [SHM:272] Graven Cairns
+1 [BOK:116] Ronin Cliffrider
+1 [CLU:130] Dagger Caster
+1 [MH2:259] Urza's Saga
+1 [UMA:237] Cavern of Souls
+1 [J22:467] Skirsdag High Priest
+1 [J22:452] Ophiomancer
+1 [LCI:137] Breeches, Eager Pillager
+1 [C13:184] Deathbringer Thoctar
+1 [J22:765] Expedition Map
+1 [CM2:241] Buried Ruin
+1 [LCC:106] Chimil, the Inner Sun
+1 [3ED:274] Sol Ring
+1 [J20:4] Demonic Tutor
+1 [OGW:86] Kalitas, Traitor of Ghet
+1 [KHM:107] Rise of the Dread Marn
+1 [MID:103] Gisa, Glorious Resurrector
+1 [CMM:161] Ghoulcaller Gisa
+1 [CMM:812] Warping Wail
+1 [BRO:217] Mishra, Tamer of Mak Fawa
+1 [SOM:173] Lux Cannon
+1 [V15:1] Akroma, Angel of Fury
+1 [CMM:940] Ancient Stone Idol
+1 [AFC:199] Basilisk Collar
+1 [BNG:158] Gorgon's Head
+1 [J22:774] Hedron Archive
+1 [V13:7] Thran Dynamo
+1 [VOC:169] Swiftfoot Boots
+1 [CHK:122] Kokusho, the Evening Star
+1 [MID:122] Slaughter Specialist
+1 [SLD:206] Exquisite Blood
+1 [SOM:73] Painful Quandary
+1 [CMM:265] Treasure Nabber
+1 [STX:286] Wandering Archaic
+1 [MRD:112] War Elemental
+1 [J21:306] Cordial Vampire
+1 [NEO:98] Gravelighter
+1 [HOP:63] Rockslide Elemental
+1 [CMR:149] Sengir, the Dark Baron
+1 [XLN:117] Revel in Riches
+1 [KHM:153] Tibalt's Trickery
+1 [CLB:669] Black Market Connections
+1 [AER:74] Yahenni, Undying Partisan
+1 [HOP:28] Grave Pact
+1 [PWAR:97p] Liliana, Dreadhorde General
+1 [JOU:65] Dictate of Erebos
+SB: 1 [ZNR:241] Zagras, Thief of Heartbeats
+LAYOUT MAIN:(2,9)(CMC,true,100)|()()([RAV:81],[J22:467],[MID:122],[J21:306])([SLD:18],[POR:98],[PIP:186],[3ED:125],[HOP:67],[DOM:129],[EXO:100],[J22:452],[LCI:137],[CMM:265],[MRD:112],[NEO:98],[HOP:63],[AER:74])([CLU:130],[OGW:86],[MID:103])([BOK:116],[CMM:161],[BRO:217],[STX:286])([C13:184],[CHK:122],[CMR:149])([V15:1])([CMM:940])([CM2:233],[SLU:12],[DIS:171],[WOC:156],[DMC:207],[ELD:244],[ME3:207],[G09:2],[KTK:262],[KTK:262],[KTK:262],[KTK:262],[KTK:262],[KTK:262],[KTK:262],[KTK:262],[MH1:226],[WOC:165],[H1R:40],[MH2:401],[VOC:181],[CHK:282],[MH2:236],[KTK:258],[KTK:258],[KTK:258],[KTK:258],[KTK:258],[KTK:258],[KTK:258],[KTK:258],[KTK:258],[ME3:214],[MID:263],[BFZ:247],[VOC:174],[SHM:272],[MH2:259],[UMA:237],[CM2:241],[SHM:278*])([OTJ:325],[J22:765],[3ED:274],[AFC:199],[BNG:158])([WOC:145],[INV:102],[DIS:165],[AFC:331],[J20:4],[CMM:812],[VOC:169],[KHM:153])([CLB:332],[HOP:36],[SLD:365],[KHM:107],[CLB:669])([SOM:173],[J22:774],[V13:7],[HOP:28])([SLD:206],[SOM:73],[XLN:117],[JOU:65])([LCC:106],[PWAR:97p])()()
+LAYOUT SIDEBOARD:(1,1)(NONE,false,50)|([ZNR:241])
